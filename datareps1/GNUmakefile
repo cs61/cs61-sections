@@ -1,5 +1,5 @@
 # build all programs with names like `membug[0-9]`
-DSPROGRAMS = $(patsubst %.cc,%,$(wildcard vector[0-9].cc list[0-9].cc map[0-9].cc set[0-9].cc uomap[0-9].cc uoset[0-9].cc flapmap[0-9].cc flapmap[0-9][0-9].cc))
+DSPROGRAMS = $(patsubst %.cc,%,$(wildcard vector[0-9].cc list[0-9].cc map[0-9].cc map[0-9][0-9].cc set[0-9].cc uomap[0-9].cc uoset[0-9].cc flapmap[0-9].cc flapmap[0-9][0-9].cc))
 PROGRAMS = $(DSPROGRAMS)
 all: $(PROGRAMS)
 
