@@ -29,13 +29,12 @@ bool can_coalesce_up(flapmap_iter it) {
 }
 
 void coalesce_up(flapmap_iter it) {
-    if (can_coalesce_up(it)) {
-        auto next = it;
-        ++next;
-        it->second.duration += next->second.duration;
-        it->second.flapcount += next->second.flapcount;
-        flapmap.erase(next);
-    }
+    assert(can_coalesce_up(it));
+    auto next = it;
+    ++next;
+    it->second.duration += next->second.duration;
+    it->second.flapcount += next->second.flapcount;
+    flapmap.erase(next);
 }
 
 bool can_coalesce_down(flapmap_iter it) {
