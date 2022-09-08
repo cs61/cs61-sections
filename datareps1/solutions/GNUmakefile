@@ -1,10 +1,10 @@
-DSPROGRAMS = $(patsubst %.cc,%,$(wildcard vector[0-9].cc list[0-9].cc map[0-9].cc map[0-9][0-9].cc set[0-9].cc uomap[0-9].cc uoset[0-9].cc flapmap[0-9].cc flapmap[0-9][0-9].cc))
-PROGRAMS = $(DSPROGRAMS)
+FMPROGRAMS = $(patsubst %.cc,%,$(wildcard flapmaps[0-9].cc flapmaps[0-9][0-9].cc))
+PROGRAMS = $(FMPROGRAMS)
 all: $(PROGRAMS)
 
-ALLPROGRAMS = $(PROGRAMS) inv testinsert0 greet
+ALLPROGRAMS = $(PROGRAMS)
 
-include ../common/rules.mk
+include ../../common/rules.mk
 
 LIBS = -lm
 
@@ -15,10 +15,14 @@ LIBS = -lm
 %.o: %.cc $(BUILDSTAMP)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DEPCFLAGS) $(O) -o $@ -c $<
 
+hexdump.o: \
+%.o: ../%.cc $(BUILDSTAMP)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DEPCFLAGS) $(O) -o $@ -c $<
+
 
 # Rules for making executables (runnable programs) from object files
 
-$(DSPROGRAMS): \
+$(FMPROGRAMS): \
 %: %.o hexdump.o
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(O) -o $@ $^ $(LIBS)
 
