@@ -1,0 +1,9 @@
+*~
+core*
+log.txt
+*.img
+obj
+pset.tgz
+weensyos1
+weensyos1.tar.gz
+config.mk
