@@ -256,9 +256,9 @@ void exception(regstate* regs) {
             proc_panic(current, "Kernel page fault on %p (%s %s, rip=%p)!\n",
                        addr, operation, problem, regs->reg_rip);
         }
-        error_printf(CPOS(24, 0), 0x0C00,
-                     "Process %d page fault on %p (%s %s, rip=%p)!\n",
-                     current->pid, addr, operation, problem, regs->reg_rip);
+        error_printf(CPOS(24, 0), COLOR_ERROR,
+            "Process %d page fault on %p (%s %s, rip=%p)!\n",
+            current->pid, addr, operation, problem, regs->reg_rip);
         current->state = P_FAULTED;
         break;
     }
