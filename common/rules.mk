@@ -1,5 +1,5 @@
 # compiler flags
-CFLAGS := -std=gnu11 -Wall -Wextra -Wshadow -g $(DEFS) $(CFLAGS)
+CFLAGS := -std=gnu2x -Wall -Wextra -Wshadow -g $(DEFS) $(CFLAGS)
 CXXFLAGS := -std=gnu++2a -Wall -Wextra -Wshadow -g $(DEFS) $(CXXFLAGS)
 
 O ?= -O3
@@ -17,6 +17,14 @@ endif
 PIE ?= 1
 ifeq ($(PIE),0)
 LDFLAGS += -no-pie
+endif
+
+# skip x86 versions in ARM Docker
+X86 ?= 1
+ifneq ($(X86),1)
+ ifneq ($(findstring /usr/x86_64-linux-gnu/bin:,$(PATH)),)
+PATH := $(subst /usr/x86_64-linux-gnu/bin:,,$(PATH))
+ endif
 endif
 
 # compiler variant
@@ -69,12 +77,10 @@ endif
 
 # sanitizer arguments
 ifndef SAN
-SAN := $(SANITIZE)
+SAN := $(or $(SANITIZE),$(ASAN),$(UBSAN))
 endif
-ifeq ($(SAN),1)
- ifndef ASAN
-ASAN := $(if $(strip $(shell $(CC) -v 2>&1 | grep 'build=aarch.*target=x86')),,1)
- endif
+ifndef ASAN
+ASAN := $(if $(strip $(shell $(CC) -v 2>&1 | grep 'build=aarch.*target=x86')),0,1)
 endif
 ifndef TSAN
  ifeq ($(WANT_TSAN),1)
@@ -83,36 +89,44 @@ TSAN := $(SAN)
 endif
 
 check_for_sanitizer = $(if $(strip $(shell $(CC) -fsanitize=$(1) -x c -E /dev/null 2>&1 | grep sanitize=)),$(info ** WARNING: The `$(CC)` compiler does not support `-fsanitize=$(1)`.),1)
+SANFLAGS :=
 ifeq ($(TSAN),1)
  ifeq ($(call check_for_sanitizer,thread),1)
-CFLAGS += -fsanitize=thread
-CXXFLAGS += -fsanitize=thread
+SANFLAGS += -fsanitize=thread
  endif
 else
- ifeq ($(or $(ASAN),$(LSAN),$(LEAKSAN)),1)
+ ifneq ($(ASAN),0)
   ifeq ($(call check_for_sanitizer,address),1)
-CFLAGS += -fsanitize=address
-CXXFLAGS += -fsanitize=address
+SANFLAGS += -fsanitize=address
   endif
  endif
  ifeq ($(or $(LSAN),$(LEAKSAN)),1)
   ifeq ($(call check_for_sanitizer,leak),1)
-CFLAGS += -fsanitize=leak
-CXXFLAGS += -fsanitize=leak
+SANFLAGS += -fsanitize=leak
   endif
  endif
 endif
-ifeq ($(or $(UBSAN),$(SAN)),1)
+ifneq ($(UBSAN),0)
  ifeq ($(call check_for_sanitizer,undefined),1)
-CFLAGS += -fsanitize=undefined -fno-sanitize-recover=undefined
-CXXFLAGS += -fsanitize=undefined -fno-sanitize-recover=undefined
+SANFLAGS += -fsanitize=undefined -fno-sanitize-recover=undefined
  endif
+endif
+ifeq ($(or $(TSAN),$(LSAN),$(LEAKSAN),$(SAN)),1)
+CFLAGS += $(SANFLAGS)
+CXXFLAGS += $(SANFLAGS)
 endif
 
 # profiling
 ifeq ($(or $(PROFILE),$(PG)),1)
 CFLAGS += -pg
 CXXFLAGS += -pg
+endif
+
+# NDEBUG
+ifeq ($(NDEBUG),1)
+CPPFLAGS += -DNDEBUG=1
+CFLAGS += -Wno-unused
+CXXFLAGS += -Wno-unused
 endif
 
 # these rules ensure dependencies are created
@@ -125,11 +139,11 @@ include $(DEPFILES)
 endif
 
 # when the C compiler or optimization flags change, rebuild all objects
-ifneq ($(strip $(DEP_CC)),$(strip $(CC) $(CPPFLAGS) $(CFLAGS) $(O)))
-DEP_CC := $(shell mkdir -p $(DEPSDIR); echo >$(BUILDSTAMP); echo "DEP_CC:=$(CC) $(CPPFLAGS) $(CFLAGS) $(O)" >$(DEPSDIR)/_cc.d)
+ifneq ($(strip $(DEP_CC)),$(strip $(CC) $(CPPFLAGS) $(CFLAGS) $(O) X86=$(X86)))
+DEP_CC := $(shell mkdir -p $(DEPSDIR); echo >$(BUILDSTAMP); echo "DEP_CC:=$(CC) $(CPPFLAGS) $(CFLAGS) $(O) X86=$(X86)" >$(DEPSDIR)/_cc.d)
 endif
-ifneq ($(strip $(DEP_CXX)),$(strip $(CXX) $(CPPFLAGS) $(CXXFLAGS) $(O) $(LDFLAGS)))
-DEP_CXX := $(shell mkdir -p $(DEPSDIR); echo >$(BUILDSTAMP); echo "DEP_CXX:=$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(O) $(LDFLAGS)" >$(DEPSDIR)/_cxx.d)
+ifneq ($(strip $(DEP_CXX)),$(strip $(CXX) $(CPPFLAGS) $(CXXFLAGS) $(O) X86=$(X86) $(LDFLAGS)))
+DEP_CXX := $(shell mkdir -p $(DEPSDIR); echo >$(BUILDSTAMP); echo "DEP_CXX:=$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(O) X86=$(X86) $(LDFLAGS)" >$(DEPSDIR)/_cxx.d)
 endif
 
 

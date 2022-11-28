@@ -1,4 +1,5 @@
-PROGRAMS = sample01 sample02 sample03 counting
+PROGRAMS = counting \
+	$(patsubst %.cc,%,$(wildcard sample[0-9][0-9].cc philosophy[0-9][0-9].cc))
 
 all: $(PROGRAMS)
 
@@ -7,6 +8,8 @@ CONFIGMK ?= config.mk
 
 O ?= 3
 PTHREAD ?= 1
+WANT_TSAN = 1
+X86 = 0
 include ../common/rules.mk
 -include $(CONFIGMK)
 
@@ -20,6 +23,7 @@ $(PROGRAMS): \
 
 clean:
 	rm -f $(ALLPROGRAMS) *.o
+	rm -f $(wildcard sample[0-9][0-9] philosophy[0-9][0-9])
 	rm -rf $(DEPSDIR) *.dSYM
 
 .PHONY: all always clean
