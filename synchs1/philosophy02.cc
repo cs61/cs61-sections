@@ -14,6 +14,7 @@ void wait_until_uncomfortable() {
     // stoic philosophers are always comfortable
 }
 
+[[gnu::noinline]] // prevent compiler optimization
 void poop_into(int stall) {
     stalls[stall] += 1;
 }
@@ -36,4 +37,9 @@ int main() {
     }
 
     sleep(5);
+
+    // NB: data races here
+    for (int i = 0; i != K; ++i) {
+        printf("stalls[%d] = %llu\n", i, stalls[i]);
+    }
 }
