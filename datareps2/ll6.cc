@@ -1,4 +1,5 @@
 #include "ll.hh"
+#include <cassert>
 
 node* head = nullptr;
 
