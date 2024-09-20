@@ -4,6 +4,7 @@
 
 int fun(const char* s);
 
+[[gnu::noinline]]
 static void yay() {
     std::cout << "🎉🎉🎉🎉🎊🎊🎊🎊🌽🌽🌽🎊🎊🎊🎊🎉🎉🎉🎉\n";
     std::cout << "                 FUN\n";
@@ -11,6 +12,7 @@ static void yay() {
     exit(0);
 }
 
+[[gnu::noinline]]
 static void no_fun() {
     std::cerr << "😿😿😿😿😿😿😿😿 no fun 😿😿😿😿😿😿😿😿\n";
     exit(1);
