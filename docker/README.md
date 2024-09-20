@@ -28,9 +28,9 @@ Disadvantages of Docker:
 
 1.  Download and install [Docker][].
 
-2.  Clone the [cs61-lectures repository][cs61-lectures] onto your computer.
+2.  Clone the [cs61-sections repository][repo] onto your computer.
 
-3.  Change into the `cs61-lectures/docker` directory.
+3.  Change into the `cs61-sections/docker` directory.
 
 4.  Run this command. It will take a while—up to ten minutes.
 
@@ -69,19 +69,19 @@ the example, `exit` quits the Docker environment and returns the terminal to
 Mac OS X.
 
 ```shellsession
-$ cd ~/cs61-lectures
+$ cd ~/cs61-sections
 $ uname
 Darwin
 $ uname -a
 Darwin Eddies-MacBook-Pro.local 20.6.0 Darwin Kernel Version 20.6.0: Wed Jun 23 00:26:27 PDT 2021; root:xnu-7195.141.2~5/RELEASE_ARM64_T8101 arm64
 $ ./cs61-run-docker
-cs61-user@a47f05ea5085:~/cs61-lectures$ uname
+cs61-user@a47f05ea5085:~/cs61-sections$ uname
 Linux
-cs61-user@a47f05ea5085:~/cs61-lectures$ uname -a
-Linux a47f05ea5085 5.10.47-linuxkit #1 SMP PREEMPT Sat Jul 3 21:50:16 UTC 2021 x86_64 x86_64 x86_64 GNU/Linux
-cs61-user@a47f05ea5085:~/cs61-lectures$ ls
+cs61-user@a47f05ea5085:~/cs61-sections$ uname -a
+Linux 8006bb91a43b 6.10.4-linuxkit #1 SMP PREEMPT_DYNAMIC Mon Aug 12 08:48:58 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux
+cs61-user@a47f05ea5085:~/cs61-sections$ ls
 common  cs61-run-docker  docker  README.md
-cs61-user@a47f05ea5085:~/cs61-lectures$ exit
+cs61-user@a47f05ea5085:~/cs61-sections$ exit
 exit
 $ 
 ```
@@ -99,7 +99,7 @@ The script assumes your Docker container is named `cs61:latest` or `cs61:arm64`.
 If you don’t want to use the script, use a command like the following.
 
 ```shellsession
-$ docker run -it --platform linux/amd64 --rm -v ~/cs61-lectures:/home/cs61-user/cs61-lectures cs61:latest
+$ docker run -it --platform linux/amd64 --rm -v ~/cs61-sections:/home/cs61-user/cs61-sections cs61:latest
 ```
 
 Explanation:
@@ -112,21 +112,21 @@ Explanation:
 * `--rm` says Docker should remove the virtual machine when it is done.
 * `-v LOCALDIR:LINUXDUR` says Docker should share a directory between your
   host and the Docker virtual machine. Here, I’ve asked for the host’s
-  `~/cs61-lectures` directory to be mapped inside the virtual machine onto the
-  `/home/cs61-user/cs61-lectures` directory, which is the virtual machine
-  user’s `~/cs61-lectures` directory.
+  `~/cs61-sections` directory to be mapped inside the virtual machine onto the
+  `/home/cs61-user/cs61-sections` directory, which is the virtual machine
+  user’s `~/cs61-sections` directory.
 * `cs61:latest` names the Docker image to run (namely, the one you built).
 
 Here’s an example session:
 
 ```shellsession
-$ docker run -it --platform linux/amd64 --rm -v ~/cs61-lectures:/home/cs61-user/cs61-lectures cs61:latest
+$ docker run -it --platform linux/amd64 --rm -v ~/cs61-sections:/home/cs61-user/cs61-sections cs61:latest
 cs61-user@a15e6c4c8dbe:~$ ls
-cs61-lectures
+cs61-sections
 cs61-user@a15e6c4c8dbe:~$ echo "Hello, world"
 Hello, world
 cs61-user@a15e6c4c8dbe:~$ cs61-docker-version
-15
+19
 cs61-user@a15e6c4c8dbe:~$ exit
 exit
 $ 
@@ -136,5 +136,4 @@ $
 [VMware Workstation]: https://www.vmware.com/products/workstation-player.html
 [VMware Fusion]: https://www.vmware.com/products/fusion.html
 [VirtualBox]: https://www.virtualbox.org/
-[cs61-lectures]: https://github.com/cs61/cs61-lectures/
-[cs61-psets]: https://github.com/cs61/cs61-f22-psets/
+[repo]: https://github.com/cs61/cs61-sections/
