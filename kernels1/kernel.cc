@@ -402,7 +402,7 @@ ssize_t syscall_pipewrite(const char* buf, size_t sz) {
         // kernel buffer full, process should try again
         return E_AGAIN;
     } else {
-        // write one character
+        // write one byte
         pipebuf[0] = buf[0];
         pipebuf_len = 1;
         return 1;
@@ -418,7 +418,7 @@ ssize_t syscall_piperead(char* buf, size_t sz) {
         // kernel buffer empty, process should try again
         return E_AGAIN;
     } else {
-        // read one character
+        // read one byte
         buf[0] = pipebuf[0];
         pipebuf_len = 0;
         return 1;
