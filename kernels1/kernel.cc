@@ -311,8 +311,7 @@ uintptr_t syscall(regstate* regs) {
 
     // It can be useful to log events using `log_printf`.
     // Events logged this way are stored in the host's `log.txt` file.
-    /* log_printf("proc %d: syscall %d at rip %p\n",
-                  current->pid, regs->reg_rax, regs->reg_rip); */
+    // log_printf("p%d: %s\n", current->pid, syscall_name(regs->reg_rax));
 
     // Show the current cursor location and memory state.
     console_show_cursor(cursorpos);
@@ -394,17 +393,14 @@ pid_t syscall_spawn(const char* command) {
 char pipebuf[1];
 size_t pipebuf_len = 0;
 
-// syscall_pipewrite(buf, sz)
-//    Handles the SYSCALL_PIPEWRITE system call; see `sys_pipewrite`
-//    in `u-lib.hh`.
-
 ssize_t syscall_pipewrite(const char* buf, size_t sz) {
+    // See `sys_pipewrite` in `u-lib.cc` for specification.
     if (sz == 0) {
         // nothing to write
         return 0;
     } else if (pipebuf_len == 1) {
-        // kernel buffer full, try again
-        return -1;
+        // kernel buffer full, process should try again
+        return E_AGAIN;
     } else {
         // write one character
         pipebuf[0] = buf[0];
@@ -413,17 +409,14 @@ ssize_t syscall_pipewrite(const char* buf, size_t sz) {
     }
 }
 
-// syscall_piperead(buf, sz)
-//    Handles the SYSCALL_PIPEREAD system call; see `sys_piperead`
-//    in `u-lib.hh`.
-
 ssize_t syscall_piperead(char* buf, size_t sz) {
+    // See `sys_piperead` in `u-lib.cc` for specification.
     if (sz == 0) {
         // no room to read
         return 0;
     } else if (pipebuf_len == 0) {
-        // kernel buffer empty, try again
-        return -1;
+        // kernel buffer empty, process should try again
+        return E_AGAIN;
     } else {
         // read one character
         buf[0] = pipebuf[0];

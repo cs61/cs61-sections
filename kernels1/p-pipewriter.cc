@@ -7,13 +7,12 @@ const char* messages[] = {
 };
 
 void process_main() {
-    size_t nwrites = 0;
-
     while (true) {
         // First, write a message.
         const char* message = messages[rand(0, arraysize(messages) - 1)];
         size_t pos = 0;
         size_t len = strlen(message);
+        size_t nwrites = 0;
         while (pos < len) {
             ++nwrites;
             ssize_t w = sys_pipewrite(&message[pos], len - pos);
@@ -25,8 +24,8 @@ void process_main() {
         }
 
         // Print that message was written.
-        console_printf(0x0F00, "%zu sys_pipewrite calls: wrote %s",
-                       nwrites, message);
+        console_printf(0x0F00, "%zu sys_pipewrite calls for %zuB: wrote %.*s",
+                       nwrites, len, len, message);
 
         // Wait 1-3 seconds.
         unsigned long wait_until = ticks + rand(HZ, 3 * HZ - 1);

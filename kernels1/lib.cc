@@ -787,6 +787,32 @@ void assert_memeq_fail(const char* file, int line, const char* msg,
 }
 
 
+// system call debugging
+
+const char* syscall_name(int syscall) {
+    switch (syscall) {
+    case SYSCALL_GETPID:
+        return "getpid";
+    case SYSCALL_YIELD:
+        return "yield";
+    case SYSCALL_PANIC:
+        return "panic";
+    case SYSCALL_PAGE_ALLOC:
+        return "page_alloc";
+    case SYSCALL_GETSYSNAME:
+        return "getsysname";
+    case SYSCALL_SPAWN:
+        return "spawn";
+    case SYSCALL_PIPEWRITE:
+        return "pipewrite";
+    case SYSCALL_PIPEREAD:
+        return "piperead";
+    default:
+        return "(unknown)";
+    }
+}
+
+
 // Some static tests of our arithmetic functions
 
 static_assert(msb(0) == 0, "msb failure");

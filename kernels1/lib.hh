@@ -225,9 +225,12 @@ inline uint32_t crc32c(const void* buf, size_t sz) {
 #define SYSCALL_PIPEWRITE       7
 #define SYSCALL_PIPEREAD        8
 
+const char* syscall_name(int syscall);
+
 
 // System call error return values
 
+#define E_AGAIN         -11        // Try again
 #define E_INVAL         -22        // Invalid argument
 #define E_RANGE         -34        // Out of range
 

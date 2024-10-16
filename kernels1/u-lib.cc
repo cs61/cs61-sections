@@ -43,16 +43,19 @@ pid_t sys_spawn(const char* command) {
 }
 
 // sys_pipewrite(buf, sz)
-//    Write data to pipe from `buf`. Writes at most `sz` bytes.
-//    Returns number of bytes written or -1 on error.
+//    Copy up to `sz` bytes of data from `buf` into the system pipe.
+//    Returns number of bytes written or a negative error code (if, for
+//    instance, the system pipe’s data transfer buffer is full).
 [[gnu::noinline]]
 ssize_t sys_pipewrite(const void* buf, size_t sz) {
     return make_syscall(SYSCALL_PIPEWRITE, (uintptr_t) buf, sz);
 }
 
 // sys_piperead(buf, sz)
-//    Read data from pipe into `buf`. Reads at most `sz` bytes.
-//    Returns number of bytes read or -1 on error.
+//    Read up to `sz` bytes of data from the system pipe into `buf`.
+//    Bytes read are removed from the system pipe.
+//    Returns number of bytes read or a negative error code (if, for
+//    instance, the system pipe’s data transfer buffer is empty).
 [[gnu::noinline]]
 ssize_t sys_piperead(void* buf, size_t sz) {
     return make_syscall(SYSCALL_PIPEREAD, (uintptr_t) buf, sz);
