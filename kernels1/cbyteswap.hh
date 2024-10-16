@@ -1,8 +1,8 @@
-#ifndef CHICKADEE_CBYTESWAP_HH
-#define CHICKADEE_CBYTESWAP_HH
-#if defined(CHICKADEE_KERNEL) || defined(CHICKADEE_PROCESS)
+#ifndef WEENSYOS_CBYTESWAP_HH
+#define WEENSYOS_CBYTESWAP_HH
+#if defined(WEENSYOS_KERNEL) || defined(WEENSYOS_PROCESS)
 
-// Chickadee requires x86-64, which is little-endian.
+// WeensyOS requires x86-64, which is little-endian.
 template <typename T>
 inline T to_le(T x) {
     return x;

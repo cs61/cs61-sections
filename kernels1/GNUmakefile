@@ -1,9 +1,11 @@
 QEMUIMAGEFILES = weensyos.img
 all: $(QEMUIMAGEFILES)
+include build/flags.mk
 
 # Place local configuration options, such as `CC=clang`, in
 # `config.mk` so you don't have to list them every time.
--include config.mk
+CONFIG ?= config.mk
+-include $(CONFIG)
 
 # `$(V)` controls whether the makefiles print verbose commands (the shell
 # commands run by Make) or brief commands (like `COMPILE`).
@@ -31,7 +33,9 @@ NCPU = 1
 LOG ?= file:log.txt
 QEMUOPT = -net none -parallel $(LOG) -smp $(NCPU)
 ifeq ($(D),1)
-QEMUOPT += -d int,cpu_reset,guest_errors -no-reboot
+QEMUOPT += -d int,cpu_reset,guest_errors -no-reboot -D qemu.log
+else ifeq ($(D),2)
+QEMUOPT += -d guest_errors -no-reboot -D qemu.log
 endif
 ifneq ($(NOGDB),1)
 QEMUGDB ?= -gdb tcp::12949
@@ -39,6 +43,8 @@ endif
 ifeq ($(STOP),1)
 QEMUOPT += -S
 endif
+
+QEMURANDSEED := $(strip $(shell od -N8 -tu8 -An /dev/urandom))
 
 
 # Sets of object files
@@ -91,20 +97,20 @@ endif
 # How to make object files
 
 $(OBJDIR)/%.ko: %.cc $(KERNELBUILDSTAMPS)
-	$(call cxxcompile,$(KERNELCXXFLAGS) -O1 -DWEENSYOS_KERNEL -c $< -o $@,COMPILE $<)
+	$(call cxxcompile,-O1 $(KERNELCXXFLAGS) -DWEENSYOS_KERNEL -c $< -o $@,COMPILE $<)
 
 $(OBJDIR)/%.ko: %.S $(OBJDIR)/k-asm.h $(KERNELBUILDSTAMPS)
 	$(call assemble,-O2 -c $< -o $@,ASSEMBLE $<)
 
 $(OBJDIR)/boot.o: $(OBJDIR)/%.o: boot.cc $(KERNELBUILDSTAMPS)
-	$(call cxxcompile,$(CXXFLAGS) -Os -fomit-frame-pointer -DWEENSYOS_KERNEL -c $< -o $@,COMPILE $<)
+	$(call cxxcompile,-Os $(CXXFLAGS) -fomit-frame-pointer -c $< -o $@,COMPILE $<)
 
 $(OBJDIR)/bootentry.o: $(OBJDIR)/%.o: \
 	bootentry.S $(OBJDIR)/k-asm.h $(KERNELBUILDSTAMPS)
 	$(call assemble,-Os -fomit-frame-pointer -c $< -o $@,ASSEMBLE $<)
 
 $(OBJDIR)/%.uo: %.cc $(BUILDSTAMPS)
-	$(call cxxcompile,$(CXXFLAGS) -O1 -DWEENSYOS_PROCESS -c $< -o $@,COMPILE $<)
+	$(call cxxcompile,-O1 $(CXXFLAGS) -DWEENSYOS_PROCESS -c $< -o $@,COMPILE $<)
 
 $(OBJDIR)/%.uo: %.S $(OBJDIR)/u-asm.h $(BUILDSTAMPS)
 	$(call assemble,-O2 -c $< -o $@,ASSEMBLE $<)
@@ -112,12 +118,12 @@ $(OBJDIR)/%.uo: %.S $(OBJDIR)/u-asm.h $(BUILDSTAMPS)
 
 # How to make supporting source files
 
-$(OBJDIR)/k-asm.h: kernel.hh lib.hh types.h x86-64.h build/mkkernelasm.awk $(KERNELBUILDSTAMPS)
-	$(call cxxcompile,-dM -E kernel.hh | awk -f build/mkkernelasm.awk | sort > $@,CREATE $@)
+$(OBJDIR)/k-asm.h: $(KERNELBUILDSTAMPS)
+	$(call run,$(k_asm_h_input_command) | $(asm_h_build_command) > $@,CREATE $@)
 	@if test ! -s $@; then echo '* Error creating $@!' 1>&2; exit 1; fi
 
-$(OBJDIR)/u-asm.h: u-lib.hh lib.hh types.h x86-64.h build/mkkernelasm.awk $(BUILDSTAMPS)
-	$(call cxxcompile,-dM -E u-lib.hh | awk -f build/mkkernelasm.awk | sort > $@,CREATE $@)
+$(OBJDIR)/u-asm.h: $(BUILDSTAMPS)
+	$(call run,$(u_asm_h_input_command) | $(asm_h_build_command) > $@,CREATE $@)
 	@if test ! -s $@; then echo '* Error creating $@!' 1>&2; exit 1; fi
 
 $(OBJDIR)/k-firstprocess.h:
@@ -127,7 +133,7 @@ $(OBJDIR)/k-foreachimage.h: build/mkforeachimage.awk $(PROCESSES_BUILDSTAMP)
 	$(call run,awk -f build/mkforeachimage.awk -v processes="$(PROCESSES)" > $@,CREATE $@)
 
 $(OBJDIR)/firstprocess.gdb:
-	$(call run,if test "$(WEENSYOS_FIRST_PROCESS)" = allocators; then echo "add-symbol-file obj/p-allocator.full 0x100000"; echo "add-symbol-file obj/p-allocator2.full 0x140000"; echo "add-symbol-file obj/p-allocator3.full 0x180000"; echo "add-symbol-file obj/p-allocator4.full 0x1C0000"; else echo "add-symbol-file obj/p-$(WEENSYOS_FIRST_PROCESS).full 0x100000"; fi > $@,CREATE $@)
+	$(call run,if test "$(WEENSYOS_FIRST_PROCESS)" = friends; then echo "add-symbol-file obj/p-alice.full 0x100000"; echo "add-symbol-file obj/p-eve.full 0x140000"; else echo "add-symbol-file obj/p-$(WEENSYOS_FIRST_PROCESS).full 0x100000"; fi > $@,CREATE $@)
 
 $(OBJDIR)/k-hardware.ko: $(OBJDIR)/k-foreachimage.h
 
@@ -158,7 +164,7 @@ $(OBJDIR)/%: $(OBJDIR)/%.full
 	$(call run,$(QUIETOBJCOPY) -j .text -j .rodata -j .data -j .bss -j .ctors -j .init_array $<,STRIP,$@)
 
 $(OBJDIR)/bootsector: $(BOOT_OBJS) build/boot.ld
-	$(call link,-T build/boot.ld -o $@.full $(BOOT_OBJS),LINK)
+	$(call link,-T build/boot.ld -z noexecstack -o $@.full $(BOOT_OBJS),LINK)
 	$(call run,$(OBJDUMP) -C -S $@.full >$@.asm)
 	$(call run,$(NM) -n $@.full >$@.sym)
 	$(call run,$(OBJCOPY) -S -O binary -j .text $@.full $@)
@@ -167,19 +173,19 @@ $(OBJDIR)/bootsector: $(BOOT_OBJS) build/boot.ld
 # How to make host program for ensuring a loaded symbol table
 
 $(OBJDIR)/mkchickadeesymtab: build/mkchickadeesymtab.cc $(BUILDSTAMPS)
-	$(call run,$(HOSTCXX) $(CPPFLAGS) $(HOSTCXXFLAGS) $(DEPCFLAGS) -g -o $@,HOSTCOMPILE,$<)
+	$(call run,$(HOSTCXX) $(HOSTCPPFLAGS) $(HOSTCXXFLAGS) $(DEPCFLAGS) -g -o $@,HOSTCOMPILE,$<)
 
 
 # How to make host programs for constructing & checking file systems
 
 $(OBJDIR)/%.o: %.cc $(BUILDSTAMPS)
-	$(call run,$(HOSTCXX) $(CPPFLAGS) $(HOSTCXXFLAGS) $(DEPCFLAGS) -c -o $@,HOSTCOMPILE,$<)
+	$(call run,$(HOSTCXX) $(HOSTCPPFLAGS) $(HOSTCXXFLAGS) $(DEPCFLAGS) -c -o $@,HOSTCOMPILE,$<)
 
 $(OBJDIR)/%.o: build/%.cc $(BUILDSTAMPS)
-	$(call run,$(HOSTCXX) $(CPPFLAGS) $(HOSTCXXFLAGS) $(DEPCFLAGS) -c -o $@,HOSTCOMPILE,$<)
+	$(call run,$(HOSTCXX) $(HOSTCPPFLAGS) $(HOSTCXXFLAGS) $(DEPCFLAGS) -c -o $@,HOSTCOMPILE,$<)
 
 $(OBJDIR)/mkbootdisk: build/mkbootdisk.cc $(BUILDSTAMPS)
-	$(call run,$(HOSTCXX) $(CPPFLAGS) $(HOSTCXXFLAGS) $(DEPCFLAGS) -g -o $@,HOSTCOMPILE,$<)
+	$(call run,$(HOSTCXX) $(HOSTCPPFLAGS) $(HOSTCXXFLAGS) $(DEPCFLAGS) -g -o $@,HOSTCOMPILE,$<)
 
 
 weensyos.img: $(OBJDIR)/mkbootdisk $(OBJDIR)/bootsector $(OBJDIR)/kernel
@@ -219,7 +225,7 @@ run-gdb-$(RUNSUFFIX): run-gdb
 run-gdb-graphic-$(RUNSUFFIX): run-gdb-graphic
 run-gdb-console-$(RUNSUFFIX): run-gdb-console
 
-# Kill all my qemus
+# Stop all my qemus
 stop kill:
 	-killall -u $$(whoami) $(QEMU)
 	@sleep 0.2; if ps -U $$(whoami) | grep $(QEMU) >/dev/null; then killall -9 -u $$(whoami) $(QEMU); fi

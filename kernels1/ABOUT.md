@@ -6,8 +6,8 @@ This is WeensyOS, a teaching operating system built for Harvard’s
 
 Quickstart: `make run` will run the OS using the [QEMU] emulator.
 
-Running the OS
---------------
+Make targets
+------------
 
 `make run` will run the OS. On Docker, the OS will run in your terminal
 window; on a Linux virtual machine, QEMU will open a new window. (`make
@@ -21,11 +21,14 @@ WeensyOS creates a debug log in `log.txt`. Run `make LOG=stdio run` to
 redirect the debug log to the standard output, or `make
 LOG=file:FILENAME run` to redirect it to `FILENAME`.
 
-Run `make D=1 run` to ask QEMU to print verbose information about interrupts
-and CPU resets to the standard error. This setting will also cause QEMU to
-quit after encountering a [triple fault][] (normally it will reboot).
+`make D=1 run` tells QEMU to print verbose information about interrupts and
+CPU resets to the file `qemu.log`. This setting will also cause QEMU to quit
+after encountering a [triple fault][] (normally it will reboot).
 
-Finally, run `make clean` to clean up your directory.
+`make run-PROGRAM` runs `p-PROGRAM.cc` as the first non-init process. The
+default is `allocators`, which runs four copies of `p-allocator.cc`.
+
+Finally, `make clean` cleans up your directory.
 
 Building
 --------
@@ -44,19 +47,23 @@ but only version 5 or later.
 
 3. Install Homebrew’s QEMU: `brew install qemu`
 
-4. Tap [Sergio Benitez’s collection of cross-compilers](https://github.com/SergioBenitez/homebrew-osxct): `brew tap SergioBenitez/osxct`
+4. Install a collection of cross-compilers for x86-64 Linux. At time of
+   writing, [this
+   collection](https://github.com/messense/homebrew-macos-cross-toolchains):
+   works: `brew tap messense/homebrew-macos-cross-toolchains; brew install
+   x86_64-unknown-linux-gnu`
 
-5. Install the `x86_64-unknown-linux-gnu` cross-compiler toolchain: `brew install x86_64-unknown-linux-gnu`
-
-6. Create a file `config.mk` in this directory containing this:
+5. Create a file `config.mk` in this directory containing this:
 
     ```make
     CCPREFIX=x86_64-unknown-linux-gnu-
-    HOSTCC=gcc-12
-    HOSTCXX=g++-12
+    HOSTCC=gcc-14
+    HOSTCXX=g++-14
     ```
 
-    (Do not `git add config.mk`: it is intended for local configuration.)
+    But do not add `config.mk` to your repository! It configures the
+    build for your working directory environment, and the grading
+    server (for instance) can’t use those settings.
 
 Troubleshooting
 ---------------
@@ -72,7 +79,8 @@ OS has become unresponsive).
   enter Docker via `../cs61-run-docker` before running `make stop`.
 
 * If QEMU is running in a terminal window (in Docker, for instance), then
-  press `Alt-2`. This will bring up the QEMU Monitor, which looks like this:
+  press `Alt-2` (or `Option-2`). This will bring up the QEMU Monitor, which
+  looks like this:
 
     ```
     compat_monitor0 console
@@ -85,9 +93,9 @@ OS has become unresponsive).
     command to restore it.
 
     If `Alt-2` does not work, you may need to configure your terminal to
-    properly send the Alt key. For instance, on Mac OS X’s Terminal, go to
-    Terminal > Preferences > Keyboard and select “Use Option as Meta key”. You
-    can also configure a special keyboard shortcut that sends the `Escape 2`
+    properly send the Alt key. For instance, on Mac OS X’s Terminal, go to the
+    Edit menu, select “Use Option as Meta key”, and press `Option-2`. You can
+    also configure a special keyboard shortcut that sends the `Escape 2`
     sequence.
 
 Run `make run-gdb` to start up the OS with support for GDB debugging.

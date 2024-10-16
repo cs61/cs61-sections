@@ -296,15 +296,6 @@ __no_asan
 bool lookup_symbol(uintptr_t addr, const char** name, uintptr_t* start);
 
 
-// error_vprintf, error_printf
-//    Print debugging messages to the console and to the host's
-//    `log.txt` file via `log_printf`.
-int error_vprintf(int cpos, int color, const char* format, va_list val);
-int error_printf(int cpos, int color, const char* format, ...);
-void error_printf(int color, const char* format, ...);
-void error_printf(const char* format, ...);
-
-
 // address translation functions for identity-mapped kernels
 inline uint64_t kptr2pa(uint64_t kptr) {
     return kptr;

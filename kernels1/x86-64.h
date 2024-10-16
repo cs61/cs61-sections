@@ -53,16 +53,16 @@
 #define PA_IOHIGHEND    0x0000000100000000UL // end address of MMIO region 2
 
 // Parts of a paged address: page index, page offset
-static inline int pageindex(uintptr_t addr, int level) {
+static inline __constexpr int pageindex(uintptr_t addr, int level) {
     return (int) (addr >> (PAGEOFFBITS + level * PAGEINDEXBITS)) & 0x1FF;
 }
-static inline uintptr_t pageoffmask(int level) {
-    return (1UL << (PAGEOFFBITS + level * PAGEINDEXBITS)) - 1;
+static inline __constexpr uintptr_t pageoffmask(int level) {
+    return ~(~uintptr_t(0) << (PAGEOFFBITS + level * PAGEINDEXBITS));
 }
-static inline uintptr_t pageoffset(uintptr_t addr, int level) {
+static inline __constexpr uintptr_t pageoffset(uintptr_t addr, int level) {
     return addr & pageoffmask(level);
 }
-static inline bool va_is_canonical(uintptr_t va) {
+static inline __constexpr bool va_is_canonical(uintptr_t va) {
     return va <= VA_LOWMAX || va >= VA_HIGHMIN;
 }
 

@@ -13,53 +13,41 @@ ifeq ($(origin CXX),default)
 CXX     := $(shell $(SHELL) build/findgcc.sh $(CXX))
 endif
 else
-CC      = $(CCPREFIX)cc
-CXX     = $(CCPREFIX)c++
+# Override implicit settings, allow user settings
+ifeq ($(origin CC),default)
+CC      := $(CCPREFIX)cc
 endif
-LD      = $(CCPREFIX)ld
-OBJCOPY = $(CCPREFIX)objcopy
-OBJDUMP = $(CCPREFIX)objdump
-NM      = $(CCPREFIX)nm
-STRIP   = $(CCPREFIX)strip
+ifeq ($(origin CXX),default)
+CXX     := $(CCPREFIX)c++
+endif
+ifeq ($(origin LD),default)
+LD      := $(CCPREFIX)ld
+endif
+endif
+
+OBJCOPY ?= $(CCPREFIX)objcopy
+OBJDUMP ?= $(CCPREFIX)objdump
+NM      ?= $(CCPREFIX)nm
+STRIP   ?= $(CCPREFIX)strip
 
 # Native commands
-HOSTCC  = cc
-HOSTCXX = c++
-TAR     = tar
-PERL    = perl
-HOSTCFLAGS := $(CFLAGS) -std=gnu2x -Wall -W
-HOSTCXXFLAGS := $(CXXFLAGS) -std=gnu++2a -Wall -W
+HOSTCC  ?= cc
+HOSTCXX ?= c++
+TAR     ?= tar
+PERL    ?= perl
 
-# Compiler flags
-# -Os is required for the boot loader to fit within 512 bytes;
-# -ffreestanding means there is no standard library.
-CPPFLAGS := $(DEFS) -I.
-
-CCOMMONFLAGS := -m64 -mno-mmx -mno-sse -mno-sse2 -mno-sse3 \
-	-mno-3dnow -ffreestanding -fno-omit-frame-pointer -fno-pic \
-	-fno-stack-protector \
-	-Wall -W -Wshadow -Wno-format -Wno-unused-parameter \
-	-Wstack-usage=1024
-
-ASFLAGS := $(CCOMMONFLAGS)
+# Update flags based on `make` options and program support
 ASFLAGS += $(shell $(CXX) -no-integrated-as -E -x c /dev/null >/dev/null 2>&1 && echo -no-integrated-as)
-CFLAGS := $(CFLAGS) $(CCOMMONFLAGS) -std=gnu2x -gdwarf
-CXXFLAGS := $(CXXFLAGS) $(CCOMMONFLAGS) -std=gnu++2a \
-	-fno-exceptions -fno-rtti -gdwarf -ffunction-sections
-DEPCFLAGS = -MD -MF $(DEPSDIR)/$(@F).d -MP
 
-KERNELCXXFLAGS = $(CXXFLAGS) -mno-red-zone $(SANITIZEFLAGS)
+LDFLAGS += $(shell $(LD) -m elf_x86_64 --help >/dev/null 2>&1 && echo "-m elf_x86_64")
+LDFLAGS += $(shell $(LD) --no-warn-rwx-segments --help >/dev/null 2>&1 && echo "--no-warn-rwx-segments")
+
 ifeq ($(filter 1,$(SAN) $(UBSAN)),1)
 KERNEL_OBJS += $(OBJDIR)/k-sanitizers.ko
 KERNELCXXFLAGS += -DHAVE_SANITIZERS
 SANITIZEFLAGS := -fsanitize=undefined -fsanitize=kernel-address
 $(OBJDIR)/k-alloc.ko $(OBJDIR)/k-sanitizers.ko: SANITIZEFLAGS :=
 endif
-
-# Linker flags
-LDFLAGS := $(LDFLAGS) -Os --gc-sections -z max-page-size=0x1000 \
-	-static -nostdlib
-LDFLAGS	+= $(shell $(LD) -m elf_x86_64 --help >/dev/null 2>&1 && echo -m elf_x86_64)
 
 QUIETOBJCOPY = sh build/quietobjcopy.sh $(OBJCOPY)
 
@@ -76,8 +64,8 @@ endif
 ifneq ($(DEP_CC),$(CC) $(CPPFLAGS) $(CFLAGS) $(DEPCFLAGS) $(O) _ $(LDFLAGS))
 DEP_CC := $(shell mkdir -p $(DEPSDIR); echo >$(BUILDSTAMP); echo "DEP_CC:=$(CC) $(CPPFLAGS) $(CFLAGS) $(DEPCFLAGS) $(O) _ $(LDFLAGS)" >$(DEPSDIR)/_cc.d; echo "DEP_PREFER_GCC:=$(PREFER_GCC)" >>$(DEPSDIR)/_cc.d)
 endif
-ifneq ($(DEP_CXX),$(CXX) $(CPPFLAGS) $(DEPCFLAGS) $(CXXFLAGS) $(O) _ $(HOSTCXXFLAGS))
-DEP_CXX := $(shell mkdir -p $(DEPSDIR); echo >$(BUILDSTAMP); echo "DEP_CXX:=$(CXX) $(CPPFLAGS) $(DEPCFLAGS) $(CXXFLAGS) $(O) _ $(HOSTCXXFLAGS)" >$(DEPSDIR)/_cxx.d)
+ifneq ($(DEP_CXX),$(CXX) $(HOSTCPPFLAGS) $(DEPCFLAGS) $(CXXFLAGS) $(O) _ $(HOSTCXXFLAGS))
+DEP_CXX := $(shell mkdir -p $(DEPSDIR); echo >$(BUILDSTAMP); echo "DEP_CXX:=$(CXX) $(HOSTCPPFLAGS) $(DEPCFLAGS) $(CXXFLAGS) $(O) _ $(HOSTCXXFLAGS)" >$(DEPSDIR)/_cxx.d)
 endif
 ifneq ($(DEP_KERNELCXX),$(CXX) $(CPPFLAGS) $(DEPCFLAGS) $(KERNELCXXFLAGS) $(O))
 DEP_KERNELCXX := $(shell mkdir -p $(DEPSDIR); echo >$(KERNELBUILDSTAMP); echo "DEP_KERNELCXX:=$(CXX) $(CPPFLAGS) $(DEPCFLAGS) $(KERNELCXXFLAGS) $(O)" >$(DEPSDIR)/_kernelcxx.d)
@@ -85,18 +73,29 @@ endif
 
 BUILDSTAMPS = $(OBJDIR)/stamp $(BUILDSTAMP)
 GDBFILES = $(OBJDIR)/firstprocess.gdb
-KERNELBUILDSTAMPS = $(OBJDIR)/stamp $(KERNELBUILDSTAMP) $(GDBFILES)
+KERNELBUILDSTAMPS = $(OBJDIR)/stamp $(KERNELBUILDSTAMP)
 
 $(OBJDIR)/stamp $(BUILDSTAMP):
 	$(call run,mkdir -p $(@D))
 	$(call run,touch $@)
 
-ifneq ($(strip $(PROCESSES)),$(DEP_PROCESSES))
-PROCESSES_BUILDSTAMP := $(shell echo "DEP_PROCESSES:=$(strip $(PROCESSES))" > $(DEPSDIR)/_processes.d; echo always)
+k_asm_h_input_command := $(CXX) $(CPPFLAGS) $(KERNELCXXFLAGS) -DWEENSYOS_KERNEL -dM -E kernel.hh
+u_asm_h_input_command := $(CXX) $(CPPFLAGS) $(CXXFLAGS) -DWEENSYOS_PROCESS -dM -E u-lib.hh
+asm_h_build_command := awk -f build/mkkernelasm.awk | sort
+
+ifneq ($(wildcard $(OBJDIR)/k-asm.h),)
+DEPCHECK_K_ASM_H := $(shell \
+	$(k_asm_h_input_command) | $(asm_h_build_command) > $(OBJDIR)/k-asm.h1; \
+	cmp $(OBJDIR)/k-asm.h $(OBJDIR)/k-asm.h1 >/dev/null 2>&1 || rm -f $(OBJDIR)/k-asm.h)
+endif
+ifneq ($(wildcard $(OBJDIR)/u-asm.h),)
+DEPCHECK_U_ASM_H := $(shell \
+	$(u_asm_h_input_command) | $(asm_h_build_command) > $(OBJDIR)/u-asm.h1; \
+	cmp $(OBJDIR)/u-asm.h $(OBJDIR)/u-asm.h1 >/dev/null 2>&1 || rm -f $(OBJDIR)/u-asm.h)
 endif
 
-ifneq ($(strip $(DISKFS_CONTENTS)),$(DEP_DISKFS_CONTENTS))
-DISKFS_BUILDSTAMP := $(shell echo "DEP_DISKFS_CONTENTS:=$(strip $(DISKFS_CONTENTS))" > $(DEPSDIR)/_diskfs.d; echo always)
+ifneq ($(strip $(PROCESSES)),$(DEP_PROCESSES))
+PROCESSES_BUILDSTAMP := $(shell echo "DEP_PROCESSES:=$(strip $(PROCESSES))" > $(DEPSDIR)/_processes.d; echo always)
 endif
 
 # Qemu emulator
@@ -131,7 +130,7 @@ check-qemu-console:
 	        echo "***" 1>&2; echo 1>&2; \
 	        echo sudo $$cmd qemu-system-x86; \
 	        sudo $$cmd qemu-system-x86 || exit 1; \
-	    else echo "*** Try running this command to install it:" 1>&2; \
+	    else echo "*** If on Linux, try running this command to install it:" 1>&2; \
 	        echo sudo $$cmd qemu-system-x86 1>&2; \
 	        echo 1>&2; exit 1; fi; \
 	else :; fi

@@ -1,5 +1,5 @@
-#ifndef CHICKADEE_K_APIC_HH
-#define CHICKADEE_K_APIC_HH
+#ifndef WEENSYOS_K_APIC_HH
+#define WEENSYOS_K_APIC_HH
 #include "kernel.hh"
 
 #define MSR_IA32_APIC_BASE 0x1B

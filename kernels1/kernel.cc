@@ -2,6 +2,7 @@
 #include "k-apic.hh"
 #include "k-vmiter.hh"
 #include "obj/k-firstprocess.h"
+#include <atomic>
 
 // kernel.cc
 //
@@ -23,11 +24,12 @@
 
 #define PROC_SIZE 0x40000       // initial state only
 
-proc ptable[NPROC];             // array of process descriptors
+proc ptable[PID_MAX];           // array of process descriptors
                                 // Note that `ptable[0]` is never used.
 proc* current;                  // pointer to currently executing proc
 
 bool show_memory = false;       // whether to show memory
+extern std::atomic<unsigned long> ticks; // # timer interrupts so far
 
 
 // Memory state - see `kernel.hh`
@@ -50,16 +52,18 @@ static void process_setup(pid_t pid, const char* program_name);
 void kernel_start(const char* command) {
     // initialize hardware
     init_hardware();
+    init_timer(HZ);
     log_printf("Starting WeensyOS\n");
 
     ticks = 1;
-    init_timer(HZ);
 
     // clear screen
     console_clear();
 
     // (re-)initialize kernel page table
-    for (uintptr_t addr = 0; addr < MEMSIZE_PHYSICAL; addr += PAGESIZE) {
+    vmiter it(kernel_pagetable, 0);
+    for (; it.va() < MEMSIZE_PHYSICAL; it += PAGESIZE) {
+        uintptr_t addr = it.va();
         int perm = PTE_P | PTE_W;
         if (addr == 0) {
             // nullptr is inaccessible even to the kernel
@@ -69,13 +73,13 @@ void kernel_start(const char* command) {
             perm |= PTE_U;
         }
         // install identity mapping
-        int r = vmiter(kernel_pagetable, addr).try_map(addr, perm);
+        int r = it.try_map(addr, perm);
         assert(r == 0); // mappings during kernel_start MUST NOT fail
                         // (Note that later mappings might fail!!)
     }
 
     // set up process descriptors
-    for (pid_t i = 0; i < NPROC; i++) {
+    for (pid_t i = 0; i < PID_MAX; i++) {
         ptable[i].pid = i;
         ptable[i].state = P_FREE;
     }
@@ -322,7 +326,7 @@ uintptr_t syscall(regstate* regs) {
     switch (regs->reg_rax) {
 
     case SYSCALL_PANIC:
-        user_panic(current);
+        user_panic(current);    // does not return
         break; // will not be reached
 
     case SYSCALL_GETPID:
@@ -331,6 +335,7 @@ uintptr_t syscall(regstate* regs) {
     case SYSCALL_YIELD:
         current->regs.reg_rax = 0;
         schedule();             // does not return
+        break; // will not be reached
 
     case SYSCALL_PAGE_ALLOC:
         return syscall_page_alloc(current->regs.reg_rdi);
@@ -435,7 +440,7 @@ ssize_t syscall_piperead(char* buf, size_t sz) {
 void schedule() {
     pid_t pid = current->pid;
     for (unsigned spins = 1; true; ++spins) {
-        pid = (pid + 1) % NPROC;
+        pid = (pid + 1) % PID_MAX;
         if (ptable[pid].state == P_RUNNABLE) {
             run(&ptable[pid]);
         }

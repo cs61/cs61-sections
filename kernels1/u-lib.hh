@@ -15,7 +15,8 @@
 //    These functions define the WeensyOS system call calling convention.
 //    We provide versions for system calls with 0-2 arguments.
 
-__always_inline uintptr_t make_syscall(int syscallno) {
+__always_inline
+uintptr_t make_syscall(int syscallno) {
     register uintptr_t rax asm("rax") = syscallno;
     asm volatile ("syscall"
             : "+a" (rax)
@@ -25,7 +26,8 @@ __always_inline uintptr_t make_syscall(int syscallno) {
     return rax;
 }
 
-__always_inline uintptr_t make_syscall(int syscallno, uintptr_t arg0) {
+__always_inline
+uintptr_t make_syscall(int syscallno, uintptr_t arg0) {
     register uintptr_t rax asm("rax") = syscallno;
     asm volatile ("syscall"
             : "+a" (rax), "+D" (arg0)
@@ -34,8 +36,8 @@ __always_inline uintptr_t make_syscall(int syscallno, uintptr_t arg0) {
     return rax;
 }
 
-__always_inline uintptr_t make_syscall(int syscallno, uintptr_t arg0,
-                                       uintptr_t arg1) {
+__always_inline
+uintptr_t make_syscall(int syscallno, uintptr_t arg0, uintptr_t arg1) {
     register uintptr_t rax asm("rax") = syscallno;
     asm volatile ("syscall"
             : "+a" (rax), "+D" (arg0), "+S" (arg1)
@@ -44,8 +46,9 @@ __always_inline uintptr_t make_syscall(int syscallno, uintptr_t arg0,
     return rax;
 }
 
-__always_inline uintptr_t make_syscall(int syscallno, uintptr_t arg0,
-                                       uintptr_t arg1, uintptr_t arg2) {
+__always_inline
+uintptr_t make_syscall(int syscallno, uintptr_t arg0,
+                       uintptr_t arg1, uintptr_t arg2) {
     register uintptr_t rax asm("rax") = syscallno;
     asm volatile ("syscall"
             : "+a" (rax), "+D" (arg0), "+S" (arg1), "+d" (arg2)
@@ -54,9 +57,9 @@ __always_inline uintptr_t make_syscall(int syscallno, uintptr_t arg0,
     return rax;
 }
 
-__always_inline uintptr_t make_syscall(int syscallno, uintptr_t arg0,
-                                       uintptr_t arg1, uintptr_t arg2,
-                                       uintptr_t arg3) {
+__always_inline
+uintptr_t make_syscall(int syscallno, uintptr_t arg0,
+                       uintptr_t arg1, uintptr_t arg2, uintptr_t arg3) {
     register uintptr_t rax asm("rax") = syscallno;
     register uintptr_t r10 asm("r10") = arg3;
     asm volatile ("syscall"
@@ -66,11 +69,13 @@ __always_inline uintptr_t make_syscall(int syscallno, uintptr_t arg0,
     return rax;
 }
 
-__always_inline void clobber_memory(void* ptr) {
+__always_inline
+void clobber_memory(void* ptr) {
     asm volatile ("" : "+m" (*(char*) ptr));
 }
 
-__always_inline void access_memory(const void* ptr) {
+__always_inline
+void access_memory(const void* ptr) {
     asm volatile ("" : : "m" (*(const char*) ptr));
 }
 
