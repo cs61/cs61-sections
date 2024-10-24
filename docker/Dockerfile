@@ -85,7 +85,8 @@ ENV LANG=en_US.UTF-8
 RUN rm -r /var/lib/apt/lists/*
 
 # set up passwordless sudo for user cs61-user
-RUN useradd -m -s /bin/bash cs61-user &&\
+ARG UID=1001
+RUN useradd -m -s /bin/bash -u "${UID}" cs61-user &&\
  echo "cs61-user ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/cs61-init
 
 # create binary reporting version of dockerfile
