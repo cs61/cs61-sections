@@ -1,0 +1,10 @@
+empty_room 1
+check_in 3
+check_rep
+empty_room 1
+check_in 4
+check_in 6
+check_in 1
+check_in 2
+empty_room 5
+check_rep

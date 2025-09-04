@@ -1,0 +1,8 @@
+check_in 1
+check_in 2
+check_in 3
+check_in 4
+check_in_fail 1
+check_in_fail 4
+check_in 5
+check_rep

@@ -1,0 +1,15 @@
+check_in 1
+check_in 2
+check_in 3
+check_in 4
+check_in_fail 1
+check_in_fail 4
+empty_room 5
+empty_room 5
+check_in 5
+empty_room 6
+check_in 7
+empty_room 6
+check_in 6
+empty_room 8
+check_rep
