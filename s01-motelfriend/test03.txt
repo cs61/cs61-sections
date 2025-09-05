@@ -1,10 +1,23 @@
 empty_room 1
 check_in 3
+
 check_rep
+# maximally-coalesced map should have 1 element, for room 3
+check_map_size 1
+
 empty_room 1
 check_in 4
 check_in 6
 check_in 1
 check_in 2
 empty_room 5
+
 check_rep
+# map should have 2 elements, 1-4 + 6
+check_map_size 2
+
+check_in 5
+
+check_rep
+# map should have 1 element, 1-6
+check_map_size 1

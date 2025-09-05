@@ -43,6 +43,7 @@ int main(int argc, char* argv[]) {
         }
 
         unsigned long room;
+        size_t size;
         char placeholder[2];
         if (sscanf(s, "check_in %lu", &room)) {
             if (check_in(room)) {
@@ -76,6 +77,14 @@ int main(int argc, char* argv[]) {
             }
             fprintf(stderr, "%s:%lu: assertion failure at `check_rep`\n",
                     filename, line);
+            exit(1);
+        } else if (sscanf(s, "check_map_size %zu", &size)) {
+            if (check_map_size(size)) {
+                ++ntests;
+                continue;
+            }
+            fprintf(stderr, "%s:%lu: assertion failure at `check_map_size %zu`\n",
+                    filename, line, size);
             exit(1);
         } else {
             fprintf(stderr, "%s:%lu: bogus assertion\n", filename, line);
