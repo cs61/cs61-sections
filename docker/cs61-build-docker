@@ -11,6 +11,7 @@ args=()
 # Except on Darwin, adopt current UID by default.
 if test "`uname`" != Darwin; then
     uid="`id -u`"
+    if [ $uid -le 1000 ]; then uid=""; fi
 fi
 
 usage () {

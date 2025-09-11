@@ -6,7 +6,7 @@ minimal CS 61 environment, including Linux, on a Mac OS X or Windows
 computer, without the overhead of a full virtual machine like [VMware
 Workstation][], [VMware Fusion][], or [VirtualBox][].
 
-It should be possible to do *all* CS 61 problem sets on CS 61 Docker.
+It should be possible to do all CS 61 problem sets on CS 61 Docker.
 
 Advantages of Docker:
 
@@ -50,7 +50,8 @@ update your repository to get the latest Dockerfile, then re-run the
 `./cs61-build-docker` command from Step 4. However, later runs should be
 faster since they’ll take advantage of your previous work.
 
-> `./cs61-build-docker` is a wrapper around `docker build`. On x86-64 hosts, it runs
+> `./cs61-build-docker` is a wrapper around `docker build`. On x86-64 hosts,
+> it runs
 > `docker build -t cs61:latest -f Dockerfile --platform linux/amd64 .`
 {.note}
 
@@ -78,7 +79,7 @@ $ ./cs61-run-docker
 cs61-user@a47f05ea5085:~/cs61-sections$ uname
 Linux
 cs61-user@a47f05ea5085:~/cs61-sections$ uname -a
-Linux 8006bb91a43b 6.10.4-linuxkit #1 SMP PREEMPT_DYNAMIC Mon Aug 12 08:48:58 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux
+Linux 8006bb91a43b 6.10.4-linuxkit #1 SMP PREEMPT_DYNAMIC Mon Aug 12 08:48:58 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux
 cs61-user@a47f05ea5085:~/cs61-sections$ ls
 common  cs61-run-docker  docker  README.md
 cs61-user@a47f05ea5085:~/cs61-sections$ exit
@@ -126,7 +127,7 @@ cs61-sections
 cs61-user@a15e6c4c8dbe:~$ echo "Hello, world"
 Hello, world
 cs61-user@a15e6c4c8dbe:~$ cs61-docker-version
-19
+22
 cs61-user@a15e6c4c8dbe:~$ exit
 exit
 $ 
@@ -136,4 +137,5 @@ $
 [VMware Workstation]: https://www.vmware.com/products/workstation-player.html
 [VMware Fusion]: https://www.vmware.com/products/fusion.html
 [VirtualBox]: https://www.virtualbox.org/
+[cs61-lectures]: https://github.com/cs61/cs61-lectures/
 [repo]: https://github.com/cs61/cs61-sections/

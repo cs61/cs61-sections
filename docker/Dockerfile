@@ -13,25 +13,25 @@ RUN apt-get update &&\
 # install GCC-related packages
 RUN apt-get -y install\
  binutils-doc\
- cpp-doc\
- gcc-doc\
- g++\
- g++-multilib\
+ cpp-14-doc\
+ gcc-14-doc\
+ g++-14\
+ g++-14-multilib\
  gdb\
  gdb-doc\
  glibc-doc\
  libblas-dev\
  liblapack-dev\
  liblapack-doc\
- libstdc++-13-doc\
+ libstdc++-14-doc\
  make\
  make-doc
 
 # install clang-related packages
 RUN apt-get -y install\
- clang\
- clang-18-doc\
- lldb
+ clang-19\
+ clang-19-doc\
+ lldb-19
 
 # install qemu for WeensyOS (sadly, this pulls in a lot of crap)
 RUN apt-get -y install\
@@ -77,9 +77,15 @@ RUN apt-get -y install\
  time\
  traceroute
 
+# install programs useful for disk images
+RUN apt-get -y install\
+ fdisk\
+ mtools
+
 # set up default locale
 RUN locale-gen en_US.UTF-8
 ENV LANG=en_US.UTF-8
+ENV ENDITOR=nano
 
 # remove unneeded .deb files
 RUN rm -r /var/lib/apt/lists/*
@@ -90,11 +96,18 @@ RUN useradd -m -s /bin/bash -u "${UID}" cs61-user &&\
  echo "cs61-user ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/cs61-init
 
 # create binary reporting version of dockerfile
-RUN (echo '#\!/bin/sh'; echo 'echo 19') > /usr/bin/cs61-docker-version; chmod ugo+rx,u+w,go-w /usr/bin/cs61-docker-version
+RUN (echo '#\!/bin/sh'; echo 'echo 22') > /usr/bin/cs61-docker-version; chmod ugo+rx,u+w,go-w /usr/bin/cs61-docker-version
 
 # git build arguments
 ARG USER=CS61\ User
 ARG EMAIL=nobody@example.com
+
+# ensure /usr/bin/c++, /usr/bin/g++, /usr/bin/clang++
+RUN test -z "`which c++`" && ln -s g++-14 /usr/bin/c++;\
+ test -z "`which g++`" && ln -s g++-14 /usr/bin/g++;\
+ test -z "`which clang`" && ln -s clang-19 /usr/bin/clang;\
+ test -z "`which clang++`" && ln -s clang++-19 /usr/bin/clang++;\
+ test -z "`which lldb`" && ln -s lldb-19 /usr/bin/lldb
 
 # configure your environment
 USER cs61-user
