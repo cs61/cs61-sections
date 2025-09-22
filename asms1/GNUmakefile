@@ -4,6 +4,7 @@ FULLSOURCES = $(patsubst fun%.cc,fun%.s,$(sort $(wildcard fun[0-9][0-9].cc)))
 
 all: $(PROGRAMS) $(FULLSOURCES)
 
+SAN ?= 0
 ifeq ($(shell uname),Linux)
 PIE ?= 0
 endif
