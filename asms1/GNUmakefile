@@ -4,9 +4,12 @@ FULLSOURCES = $(patsubst fun%.cc,fun%.s,$(sort $(wildcard fun[0-9][0-9].cc)))
 
 all: $(PROGRAMS) $(FULLSOURCES)
 
+ifeq ($(shell uname),Linux)
+PIE ?= 0
+endif
+
 O = s
 include ../common/rules.mk
-LDFLAGS := $(if $(ISLINUX),-no-pie,)
 
 %.o: %.cc $(BUILDSTAMP)
 	$(CXX) $(CPPFLAGS) $(filter-out -g,$(CXXFLAGS)) $(O) $(DEPCFLAGS) -o $@ -c $<
