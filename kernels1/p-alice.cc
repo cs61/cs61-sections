@@ -5,7 +5,7 @@ void process_main() {
     while (true) {
         ++n;
         if (n % 1024 == 0) {
-            console_printf(0x0F00, "Hi, I'm Alice! #%u\n", n);
+            console_printf(CS_NORMAL "Hi, I'm Alice! #%u\n", n);
         }
         sys_yield();
     }

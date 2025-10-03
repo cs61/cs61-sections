@@ -46,8 +46,34 @@ inline int toupper(int c);
 #define RAND_MAX 0x7FFFFFFF
 int rand();
 void srand(unsigned seed);
+
+// rand(min, max)
+//    Return a pseudorandom number roughly evenly distributed between
+//    `min` and `max`, inclusive. Requires `min <= max` and
+//    `max - min <= RAND_MAX`.
 int rand(int min, int max);
 
+// rand_engine
+//    A `rand`-style pseudorandom number generator lacking global state.
+struct rand_engine {
+    using result_type = unsigned;
+    unsigned long seed_;
+
+    inline rand_engine()                   { seed(819234718U); }
+    inline rand_engine(unsigned s)         { seed(s); }
+    inline rand_engine(unsigned long s)    { seed(s); }
+    inline static constexpr unsigned min() { return 0; }
+    inline static constexpr unsigned max() { return RAND_MAX; }
+    inline void seed(unsigned s)           { seed(((unsigned long) s) << 32 | s); }
+    inline void seed(unsigned long s)      { seed_ = s; }
+    unsigned operator()();
+    unsigned operator()(unsigned min, unsigned max);
+    int operator()(int min, int max);
+};
+
+// from_chars, to_chars
+//    C++-style functions that parse integers from the start of a string,
+//    or unparse integers into a string, with error detection.
 struct from_chars_result {
     const char* ptr;
     int ec;
@@ -56,6 +82,15 @@ from_chars_result from_chars(const char* first, const char* last,
                              long& value, int base = 10);
 from_chars_result from_chars(const char* first, const char* last,
                              unsigned long& value, int base = 10);
+using to_chars_result = from_chars_result;
+to_chars_result to_chars(char* first, char* last,
+                         long value, int base = 10);
+to_chars_result to_chars(char* first, char* last,
+                         unsigned long value, int base = 10);
+inline to_chars_result to_chars(char* first, char* last,
+                                int value, int base = 10) {
+    return to_chars(first, last, long(value), base);
+}
 
 
 // Return the offset of `member` relative to the beginning of a struct type
@@ -232,6 +267,7 @@ const char* syscall_name(int syscall);
 
 #define E_AGAIN         -11        // Try again
 #define E_INVAL         -22        // Invalid argument
+#define E_OVERFLOW      -75        // Value too large for data type
 #define E_RANGE         -34        // Out of range
 
 #define E_MINERROR      -100
@@ -243,8 +279,8 @@ inline bool is_error(uintptr_t r) {
 
 // Maximum number of processes
 
-#ifndef PID_MAX
-#define PID_MAX         16
+#ifndef MAXNPROC
+#define MAXNPROC         16
 #endif
 
 
@@ -271,59 +307,92 @@ extern volatile uint16_t console[CONSOLE_ROWS * CONSOLE_COLUMNS];
 // current position of the cursor (80 * ROW + COL)
 extern volatile int cursorpos;
 
+// Console colors
+//    `COLOR_*` constants are CGA colors: numbers between 0x0000 and 0xFF00.
+//    Bits 8-11 set the foreground color and bits 12-15 set the background.
+//    https://en.wikipedia.org/wiki/Color_Graphics_Adapter
+//    They can be passed to `console_puts` or a `%C` format specification.
+//
+//    `CS_*` constants are ANSI terminal escape sequences, and are typically
+//    prefixed to a print format, as in `console_printf(CS_WHITE "hello\n")`.
+//    https://en.wikipedia.org/wiki/ANSI_escape_code
+
+#define COLOR_GRAY          0x0700    // gray foreground, black background
+#define COLOR_WHITE         0x0F00    // white foreground, black background
+#define COLOR_ERROR         0xCF00    // white foreground, red background
+#define COLOR_SUCCESS       0x0A00    // green foreground, black background
+
+#define CS_NORMAL           "\x1b[m"
+#define CS_WHITE            "\x1b[1m"
+#define CS_RED              "\x1b[91m"
+#define CS_YELLOW           "\x1b[93m"
+#define CS_GREEN            "\x1b[32m"
+#define CS_CYAN             "\x1b[96m"
+#define CS_BLUE             "\x1b[94m"
+#define CS_PURPLE           "\x1b[35m"
+#define CS_ERROR            "\x1b[41;1m"
+#define CS_SUCCESS          "\x1b[32;1m"
+#define CS_ECHO             "\x1b[36m"
+
+
 // console_clear
 //    Erases the console and moves the cursor to the upper left (CPOS(0, 0)).
 void console_clear();
 
-#define COLOR_ERROR         0xC000      // black on red
-#define COLOR_SUCCESS       0x0A00      // green on black
-#define COLOR_NORMAL        0x0700      // gray on black
 
-
-// console_puts(cursor, color, s, len)
+// console_puts(cpos, color, s, len)
 //    Write a string to the CGA console. Writes exactly `len` characters.
 //
-//    The `cursor` argument is a cursor position, such as `CPOS(r, c)`
-//    for row number `r` and column number `c`. The `color` argument
-//    is the initial color used to print; 0x0700 is a good choice
-//    (grey on black).
+//    The `cpos` argument is a cursor position, such as `CPOS(r, c)`
+//    for row number `r` and column number `c`. `cpos == -1` prints at the
+//    current cursor position. The `color` argument is an initial color.
 //
 //    Returns the final position of the cursor.
 int console_puts(int cpos, int color, const char* s, size_t len);
 
 
-// console_printf(cursor, color, format, ...)
-//    Format and print a message to the CGA console.
+// console_printf(cpos, format, ...)
+//    Print a formatted message to the CGA console.
 //
-//    The `format` argument supports some of the C printf function's escapes:
-//    %d (to print an integer in decimal notation), %u (to print an unsigned
-//    integer in decimal notation), %x (to print an unsigned integer in
-//    hexadecimal notation), %c (to print a character), and %s (to print a
-//    string). It also takes field widths and precisions like '%10s'.
+//    The `format` argument supports some of the C printf function’s format
+//    specifications: `%d` prints an integer in decimal notation, `%u` prints
+//    an unsigned integer in decimal notation, `%x` prints an unsigned integer
+//    in hexadecimal notation, `%c` prints a character, and `%s` prints a
+//    string. Field widths and precisions are also supported.
 //
-//    The `cursor` argument is a cursor position, such as `CPOS(r, c)` for
+//    The `cpos` argument is a cursor position, such as `CPOS(r, c)` for
 //    row number `r` and column number `c`.
 //
-//    The `color` argument is the initial color used to print. 0x0700
-//    (COLOR_NORMAL) is the default gray on black. The `format` escape %C
-//    changes the current color; it takes an integer from the parameter list.
+//    The initial color is gray on black. To change the color, use a color
+//    escape sequence such as `CS_ERROR`, or a format specification `%C`,
+//    which reads an integer color from the parameter list.
 //
 //    Returns the final position of the cursor.
-int console_printf(int cpos, int color, const char* format, ...);
+int console_printf(int cpos, const char* format, ...);
 
 // console_vprintf(cpos, color, format val)
 //    The vprintf version of console_printf.
-int console_vprintf(int cpos, int color, const char* format, va_list val);
+int console_vprintf(int cpos, const char* format, va_list val);
 
-// Helper versions that default to printing white-on-black at the cursor.
-void console_printf(int color, const char* format, ...);
+// console_printf(format, ...)
+//    Print a formatted message to the console at the current cursor position.
 void console_printf(const char* format, ...);
 
 
 // Generic print library
 
+struct printer;
+
+struct ansi_escape_buffer {
+    char buf_[12];
+    int len_ = 0;
+    inline bool putc(unsigned char c, printer& pr);
+    void flush(printer& pr);
+    [[gnu::noinline, gnu::cold]] void putc_impl(unsigned char c, printer& pr);
+};
+
 struct printer {
-    int color_ = COLOR_NORMAL;
+    int color_ = COLOR_GRAY;
     virtual void putc(unsigned char c) = 0;
     void printf(const char* format, ...);
     void vprintf(const char* format, va_list val);
@@ -331,25 +400,34 @@ struct printer {
 
 struct console_printer : public printer {
     volatile uint16_t* cell_;
-    bool scroll_;
-    console_printer(int cpos, bool scroll, int color = COLOR_NORMAL);
+    unsigned short scroll_mode_;
+    short scroll_blank_ = -1;
+    ansi_escape_buffer ebuf_;
+    enum { scroll_off = 0, scroll_on = 1, scroll_blank = 2 };
+    console_printer(int cpos, int scroll_mode);
     void putc(unsigned char c) override;
     void scroll();
     void move_cursor();
 };
 
 
-// error_printf(cursor, color, format, ...)
-//    Like `console_printf`, but `color` defaults to `COLOR_ERROR`, and
-//    in the kernel, the message is also printed to the log.
-[[gnu::noinline, gnu::cold]]
-void error_printf(int cpos, int color, const char* format, ...);
-[[gnu::noinline, gnu::cold]]
-void error_vprintf(int cpos, int color, const char* format, va_list val);
-[[gnu::noinline, gnu::cold]]
-void error_printf(int color, const char* format, ...);
+// error_printf([cursor,] format, ...)
+//    Like `console_printf`, but for errors. In the kernel, the message
+//    is printed to the botttom of the screen, initially in white on
+//    red, and the message is also printed to the log.
 [[gnu::noinline, gnu::cold]]
 void error_printf(const char* format, ...);
+[[gnu::noinline, gnu::cold]]
+void error_vprintf(const char* format, va_list val);
+
+
+inline bool ansi_escape_buffer::putc(unsigned char c, printer& pr) {
+    if (len_ < 0 || (len_ == 0 && c != '\x1b' /* ESC */)) {
+        return false;
+    }
+    putc_impl(c, pr);
+    return true;
+}
 
 
 // Type information
@@ -383,6 +461,7 @@ template <typename T> constexpr char printfmt<T*>::spec[];
             assert_fail(__FILE__, __LINE__, #x, ## __VA_ARGS__);        \
         }                                                               \
     } while (false)
+
 [[noreturn, gnu::noinline, gnu::cold]]
 void assert_fail(const char* file, int line, const char* msg,
                  const char* description = nullptr);
@@ -412,7 +491,7 @@ void assert_op_fail(const char* file, int line, const char* msg,
     char fmt[48];
     snprintf(fmt, sizeof(fmt), "%%s:%%d: expected %%%s %s %%%s\n",
              printfmt<T>::spec, op, printfmt<T>::spec);
-    error_printf(CPOS(22, 0), COLOR_ERROR, fmt, file, line, x, y);
+    error_printf(fmt, file, line, x, y);
     assert_fail(file, line, msg);
 }
 

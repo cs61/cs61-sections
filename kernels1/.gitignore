@@ -1,9 +1,11 @@
 *~
+attack
+config.mk
 core*
 log.txt
 *.img
+*.log
 obj
 pset.tgz
 weensyos1
 weensyos1.tar.gz
-config.mk

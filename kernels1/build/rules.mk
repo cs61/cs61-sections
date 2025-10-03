@@ -2,6 +2,12 @@ OBJDIR := obj
 comma = ,
 export LC_ALL = C
 
+# Optimization flag
+O ?= -O2
+ifeq ($(filter 0 1 2 3 s z g fast,$(O)),$(strip $(O)))
+override O := -O$(O)
+endif
+
 # Compiler toolchain
 CCPREFIX ?=
 
@@ -67,8 +73,8 @@ endif
 ifneq ($(DEP_CXX),$(CXX) $(HOSTCPPFLAGS) $(DEPCFLAGS) $(CXXFLAGS) $(O) _ $(HOSTCXXFLAGS))
 DEP_CXX := $(shell mkdir -p $(DEPSDIR); echo >$(BUILDSTAMP); echo "DEP_CXX:=$(CXX) $(HOSTCPPFLAGS) $(DEPCFLAGS) $(CXXFLAGS) $(O) _ $(HOSTCXXFLAGS)" >$(DEPSDIR)/_cxx.d)
 endif
-ifneq ($(DEP_KERNELCXX),$(CXX) $(CPPFLAGS) $(DEPCFLAGS) $(KERNELCXXFLAGS) $(O))
-DEP_KERNELCXX := $(shell mkdir -p $(DEPSDIR); echo >$(KERNELBUILDSTAMP); echo "DEP_KERNELCXX:=$(CXX) $(CPPFLAGS) $(DEPCFLAGS) $(KERNELCXXFLAGS) $(O)" >$(DEPSDIR)/_kernelcxx.d)
+ifneq ($(DEP_KERNELCXX),$(CXX) $(CPPFLAGS) $(DEPCFLAGS) $(KERNELCXXFLAGS) $(DEBUGFLAGS) $(O))
+DEP_KERNELCXX := $(shell mkdir -p $(DEPSDIR); echo >$(KERNELBUILDSTAMP); echo "DEP_KERNELCXX:=$(CXX) $(CPPFLAGS) $(DEPCFLAGS) $(KERNELCXXFLAGS) $(DEBUGFLAGS) $(O)" >$(DEPSDIR)/_kernelcxx.d)
 endif
 
 BUILDSTAMPS = $(OBJDIR)/stamp $(BUILDSTAMP)

@@ -58,7 +58,7 @@ void init_hardware() {
 static void set_app_segment(uint64_t* segment, uint64_t type, int dpl) {
     *segment = type
         | X86SEG_S                    // code/data segment
-        | ((uint64_t) dpl << 45)
+        | (uint64_t(dpl) << 45)
         | X86SEG_P;                   // segment present
 }
 
@@ -69,7 +69,7 @@ static void set_sys_segment(uint64_t* segment, uintptr_t addr, size_t size,
         | ((size - 1) & 0x0FFFFUL)
         | (((size - 1) & 0xF0000UL) << 48)
         | type
-        | ((uint64_t) dpl << 45)
+        | (uint64_t(dpl) << 45)
         | X86SEG_P;                   // segment present
     segment[1] = addr >> 32;
 }
@@ -101,7 +101,7 @@ void init_kernel_memory() {
                     X86SEG_W, 0);
     x86_64_pseudodescriptor gdt;
     gdt.limit = sizeof(gdt_segments[0]) * 3 - 1;
-    gdt.base = (uint64_t) gdt_segments;
+    gdt.base = reinterpret_cast<uint64_t>(gdt_segments);
 
     asm volatile("lgdt %0" : : "m" (gdt.limit));
 
@@ -204,7 +204,7 @@ void init_cpu_hardware() {
     set_app_segment(&gdt_segments[SEGSEL_APP_DATA >> 3],
                     X86SEG_W, 3);
     set_sys_segment(&gdt_segments[SEGSEL_TASKSTATE >> 3],
-                    (uintptr_t) &taskstate, sizeof(taskstate),
+                    reinterpret_cast<uintptr_t>(&taskstate), sizeof(taskstate),
                     X86SEG_TSS, 0);
 
     // taskstate lets the kernel receive interrupts
@@ -213,21 +213,21 @@ void init_cpu_hardware() {
 
     x86_64_pseudodescriptor gdt, idt;
     gdt.limit = sizeof(gdt_segments) - 1;
-    gdt.base = (uint64_t) gdt_segments;
+    gdt.base = reinterpret_cast<uint64_t>(gdt_segments);
     idt.limit = sizeof(interrupt_descriptors) - 1;
-    idt.base = (uint64_t) interrupt_descriptors;
+    idt.base = reinterpret_cast<uint64_t>(interrupt_descriptors);
 
     // load segment descriptor tables
     asm volatile("lgdt %0; ltr %1; lidt %2"
                  :
                  : "m" (gdt.limit),
-                   "r" ((uint16_t) SEGSEL_TASKSTATE),
+                   "r" (uint16_t(SEGSEL_TASKSTATE)),
                    "m" (idt.limit)
                  : "memory", "cc");
 
     // initialize segments
     asm volatile("movw %%ax, %%fs; movw %%ax, %%gs"
-                 : : "a" ((uint16_t) SEGSEL_KERN_DATA));
+                 : : "a" (uint16_t(SEGSEL_KERN_DATA)));
 
 
     // set up control registers
@@ -309,12 +309,14 @@ void check_process_registers(const proc* p) {
 //    are mapped at the expected addresses.
 
 void check_pagetable(x86_64_pagetable* pagetable) {
-    assert(((uintptr_t) pagetable % PAGESIZE) == 0); // must be page aligned
-    assert(vmiter(pagetable, (uintptr_t) exception_entry).pa()
+    // `pagetable` is page-aligned
+    assert((reinterpret_cast<uintptr_t>(pagetable) % PAGESIZE) == 0);
+    // `pagetable` contains some critical mappings
+    assert(vmiter(pagetable, reinterpret_cast<uintptr_t>(exception_entry)).pa()
            == kptr2pa(exception_entry));
-    assert(vmiter(kernel_pagetable, (uintptr_t) pagetable).pa()
+    assert(vmiter(kernel_pagetable, reinterpret_cast<uintptr_t>(pagetable)).pa()
            == kptr2pa(pagetable));
-    assert(vmiter(pagetable, (uintptr_t) kernel_pagetable).pa()
+    assert(vmiter(pagetable, reinterpret_cast<uintptr_t>(kernel_pagetable)).pa()
            == kptr2pa(kernel_pagetable));
 }
 
@@ -347,7 +349,7 @@ bool allocatable_physical_address(uintptr_t pa) {
     extern uint8_t _kernel_end[];
     return !reserved_physical_address(pa)
         && (pa < KERNEL_START_ADDR
-            || pa >= round_up((uintptr_t) _kernel_end, PAGESIZE))
+            || pa >= round_up(reinterpret_cast<uintptr_t>(_kernel_end), PAGESIZE))
         && (pa < KERNEL_STACK_TOP - PAGESIZE
             || pa >= KERNEL_STACK_TOP)
         && pa < MEMSIZE_PHYSICAL;
@@ -400,7 +402,7 @@ void poweroff() {
         outw(pm_io_base + 4, 0x2000);
     }
     // No known ACPI controller; spin.
-    console_printf(CPOS(24, 0), 0xC000, "Cannot power off!\n");
+    console_printf(CPOS(24, 0), CS_ERROR "Cannot power off!\n");
     while (true) {
     }
 }
@@ -436,18 +438,18 @@ void init_process(proc* p, int flags) {
 }
 
 
-// console_show_cursor(cpos)
-//    Move the console cursor to position `cpos`, which should be between 0
-//    and 80 * 25.
+// console_show_cursor()
+//    Show the console cursor to position `cursorpos`, which should be
+//    between 0 and 80 * 25.
 
-void console_show_cursor(int cpos) {
-    if (cpos < 0 || cpos > CONSOLE_ROWS * CONSOLE_COLUMNS) {
-        cpos = 0;
+void console_show_cursor() {
+    if (cursorpos < 0 || cursorpos > CONSOLE_ROWS * CONSOLE_COLUMNS) {
+        cursorpos = 0;
     }
     outb(0x3D4, 14);
-    outb(0x3D5, cpos / 256);
+    outb(0x3D5, cursorpos / 256);
     outb(0x3D4, 15);
-    outb(0x3D5, cpos % 256);
+    outb(0x3D5, cursorpos % 256);
 }
 
 
@@ -604,17 +606,25 @@ static void parallel_port_putc(unsigned char c) {
 
 namespace {
 struct log_printer : public printer {
+    ansi_escape_buffer ebuf_;
     void putc(unsigned char c) override {
-        parallel_port_putc(c);
+        if (!ebuf_.putc(c, *this)) {
+            parallel_port_putc(c);
+        }
     }
 };
 
 struct error_printer : public console_printer {
-    error_printer(int cpos, bool scroll, int color = COLOR_ERROR)
-        : console_printer(cpos, scroll, color) {
+    log_printer logpr_;
+    error_printer()
+        : console_printer(-1, scroll_blank) {
+        if (cell_ < console + END_CPOS - CONSOLE_COLUMNS) {
+            cell_ = console + END_CPOS;
+        }
+        color_ = COLOR_ERROR;
     }
     void putc(unsigned char c) override {
-        parallel_port_putc(c);
+        logpr_.putc(c);
         console_printer::putc(c);
     }
 };
@@ -684,17 +694,34 @@ bool lookup_symbol(uintptr_t addr, const char** name, uintptr_t* start) {
 
 
 namespace {
+struct backtrace_regs {
+    uintptr_t reg_rip;
+    uintptr_t reg_rsp;
+    uintptr_t reg_rbp;
+
+    backtrace_regs()
+        : reg_rip(0), reg_rsp(0), reg_rbp(0) {
+    }
+    backtrace_regs(uintptr_t rip, uintptr_t rsp, uintptr_t rbp)
+        : reg_rip(rip), reg_rsp(rsp), reg_rbp(rbp) {
+    }
+    backtrace_regs(const regstate& regs)
+        : reg_rip(regs.reg_rip), reg_rsp(regs.reg_rsp),
+          reg_rbp(regs.reg_rbp) {
+    }
+};
+
 struct backtracer {
-    backtracer(const regstate& regs, x86_64_pagetable* pt)
+    backtracer(const backtrace_regs& regs, x86_64_pagetable* pt)
         : backtracer(regs, round_up(regs.reg_rsp, PAGESIZE), pt) {
     }
-    backtracer(const regstate& regs, uintptr_t stack_top,
+    backtracer(const backtrace_regs& regs, uintptr_t stack_top,
                x86_64_pagetable* pt)
         : rbp_(regs.reg_rbp), rsp_(regs.reg_rsp), stack_top_(stack_top),
           pt_(pt) {
-        check_leaf(regs);
-        if (!leaf_) {
-            check();
+        check_leaf(regs.reg_rip);
+        if (!leaf_ && !check()) {
+            rbp_ = rsp_ = 0;
         }
     }
     bool ok() const {
@@ -720,7 +747,9 @@ struct backtracer {
             rsp_ = rbp_ + 16;
             rbp_ = deref(rbp_);
         }
-        check();
+        if (!check()) {
+            rbp_ = rsp_ = 0;
+        }
     }
 
 private:
@@ -730,15 +759,15 @@ private:
     bool leaf_ = false;
     x86_64_pagetable* pt_;
 
-    void check_leaf(const regstate&);
-    void check();
+    void check_leaf(uintptr_t rip);
+    bool check();
 
     uintptr_t deref(uintptr_t va) const {
         return *vmiter(pt_, va).kptr<const uintptr_t*>();
     }
 };
 
-void backtracer::check_leaf(const regstate& regs) {
+void backtracer::check_leaf(uintptr_t rip) {
     // Maybe the error happened in a leaf function that had its frame
     // pointer omitted. Use a heuristic to improve the backtrace.
 
@@ -753,7 +782,7 @@ void backtracer::check_leaf(const regstate& regs) {
 
     // “return address” must be near current %rip
     uintptr_t retaddr = deref(rsp_);
-    if ((intptr_t) (retaddr - regs.reg_rip) > 0x10000
+    if (intptr_t(retaddr - rip) > 0x10000
         || (retaddr >= stack_top_ - PAGESIZE && retaddr <= stack_top_)) {
         return;
     }
@@ -775,8 +804,8 @@ void backtracer::check_leaf(const regstate& regs) {
     uintptr_t fnaddr = retaddr + (int) offset;
 
     // function must be near current %rip
-    if (fnaddr > regs.reg_rip
-        || regs.reg_rip - fnaddr > 0x1000) {
+    if (fnaddr > rip
+        || rip - fnaddr > 0x1000) {
         return;
     }
 
@@ -795,22 +824,26 @@ void backtracer::check_leaf(const regstate& regs) {
     leaf_ = true;
 }
 
-void backtracer::check() {
-    if (pt_
-        && rbp_ >= rsp_
-        && stack_top_ >= rbp_
-        && stack_top_ - rbp_ >= 16
-        && (rbp_ & 7) == 0
-        && vmiter(pt_, rbp_).range_perm(16, PTE_P)) {
-        return;
+bool backtracer::check() {
+    // require page table, aligned %rbp, and access to caller frame
+    if (!pt_
+        || (rbp_ & 7) != 0
+        || !vmiter(pt_, rbp_).range_perm(16, PTE_P)) {
+        return false;
     }
-    rbp_ = rsp_ = 0;
-}
+    // allow stepping from kernel to user; otherwise rbp_ should be >= rsp_
+    if (stack_top_ >= VA_HIGHMIN && rbp_ < VA_LOWMAX) {
+        stack_top_ = round_up(rbp_, PAGESIZE);
+    } else if (rbp_ < rsp_) {
+        return false;
+    }
+    // last check: rbp_ is on the stack ending at stack_top_
+    return stack_top_ >= rbp_ && stack_top_ - rbp_ >= 16;
 }
 
-__always_inline const regstate& backtrace_current_regs() {
+__always_inline const backtrace_regs& backtrace_current_regs() {
     // static so we don't use stack space; stack might be full
-    static regstate backtrace_kernel_regs;
+    static backtrace_regs backtrace_kernel_regs;
     backtrace_kernel_regs.reg_rsp = rdrsp();
     backtrace_kernel_regs.reg_rbp = rdrbp();
     backtrace_kernel_regs.reg_rip = 0;
@@ -820,6 +853,7 @@ __always_inline const regstate& backtrace_current_regs() {
 __always_inline x86_64_pagetable* backtrace_current_pagetable() {
     return pa2kptr<x86_64_pagetable*>(rdcr3());
 }
+}
 
 
 // error_vprintf
@@ -827,9 +861,10 @@ __always_inline x86_64_pagetable* backtrace_current_pagetable() {
 //    `log.txt` file via `log_printf`.
 
 __noinline
-void error_vprintf(int cpos, int color, const char* format, va_list val) {
-    error_printer pr(cpos, cpos < 0, color);
+void error_vprintf(const char* format, va_list val) {
+    error_printer pr;
     pr.vprintf(format, val);
+    pr.move_cursor();
 }
 
 
@@ -852,11 +887,11 @@ int check_keyboard() {
         // Install a temporary page table to carry us through the
         // process of reinitializing memory. This replicates work the
         // bootloader does.
-        x86_64_pagetable* pt = (x86_64_pagetable*) 0x1000;
+        x86_64_pagetable* pt = reinterpret_cast<x86_64_pagetable*>(0x1000UL);
         memset(pt, 0, PAGESIZE * 2);
         pt[0].entry[0] = 0x2000 | PTE_P | PTE_W;
         pt[1].entry[0] = PTE_P | PTE_W | PTE_PS;
-        wrcr3((uintptr_t) pt);
+        wrcr3(reinterpret_cast<uintptr_t>(pt));
         // The soft reboot process doesn't modify memory, so it's
         // safe to pass `multiboot_info` on the kernel stack, even
         // though it will get overwritten as the kernel runs.
@@ -876,15 +911,15 @@ int check_keyboard() {
         } else if (c == 's') {
             argument = "spawn";
         }
-        uintptr_t argument_ptr = (uintptr_t) argument;
+        uintptr_t argument_ptr = reinterpret_cast<uintptr_t>(argument);
         assert(argument_ptr < 0x100000000L);
         multiboot_info[4] = (uint32_t) argument_ptr;
         // restore initial value of data segment for reboot support
         stash_kernel_data(true);
         extern uint8_t _data_start[], _edata[], _kernel_end[];
-        uintptr_t data_size = (uintptr_t) _edata - (uintptr_t) _data_start;
-        uintptr_t zero_size = (uintptr_t) _kernel_end - (uintptr_t) _edata;
-        uint8_t* data_stash = (uint8_t*) (SYMTAB_ADDR - data_size);
+        uintptr_t data_size = reinterpret_cast<uintptr_t>(_edata) - reinterpret_cast<uintptr_t>(_data_start);
+        uintptr_t zero_size = reinterpret_cast<uintptr_t>(_kernel_end) - reinterpret_cast<uintptr_t>(_edata);
+        uint8_t* data_stash = reinterpret_cast<uint8_t*>(SYMTAB_ADDR - data_size);
         memcpy(_data_start, data_stash, data_size);
         memset(_edata, 0, zero_size);
         // restart kernel
@@ -930,7 +965,7 @@ void strlcpy_from_user(char* buf, vmiter it, size_t maxlen) {
 
 std::atomic<bool> panicking;
 
-void print_backtrace(printer& pr, const regstate& regs,
+void print_backtrace(printer& pr, const backtrace_regs& regs,
                      x86_64_pagetable* pt, bool exclude_rip = false) {
     backtracer bt(regs, pt);
     if (bt.rsp() != bt.rbp()
@@ -970,7 +1005,7 @@ void log_print_backtrace(const proc* p) {
 
 void error_print_backtrace(const regstate& regs, x86_64_pagetable* pt,
                            bool exclude_rip) {
-    error_printer pr(-1, true);
+    error_printer pr;
     if (CCOL(cursorpos)) {
         pr.printf("\n");
     }
@@ -978,11 +1013,11 @@ void error_print_backtrace(const regstate& regs, x86_64_pagetable* pt,
     pr.move_cursor();
 }
 
-static void vpanic(const regstate& regs, x86_64_pagetable* pt,
+static void vpanic(const backtrace_regs& regs, x86_64_pagetable* pt,
                    const char* format, va_list val) {
     cli();
     panicking = true;
-    error_printer pr(CPOS(24, 80), true);
+    error_printer pr;
     if (!format) {
         format = "PANIC";
     }
@@ -1043,8 +1078,7 @@ void user_panic(const proc* p) {
 
 void assert_fail(const char* file, int line, const char* msg,
                  const char* description) {
-    cursorpos = CPOS(23, 0);
-    error_printer pr(-1, true);
+    error_printer pr;
     if (description) {
         pr.printf("%s:%d: %s\n", file, line, description);
     }
@@ -1080,7 +1114,7 @@ program_image::program_image(int program_number) {
     elf_ = nullptr;
     if (program_number >= 0
         && size_t(program_number) < sizeof(ramimages) / sizeof(ramimages[0])) {
-        elf_ = (elf_header*) ramimages[program_number].begin;
+        elf_ = reinterpret_cast<elf_header*>(ramimages[program_number].begin);
         assert(elf_->e_magic == ELF_MAGIC);
     } else {
         elf_ = nullptr;
@@ -1136,7 +1170,7 @@ size_t program_image_segment::size() const {
     return ph_->p_memsz;
 }
 const char* program_image_segment::data() const {
-    return (const char*) elf_ + ph_->p_offset;
+    return reinterpret_cast<const char*>(elf_) + ph_->p_offset;
 }
 size_t program_image_segment::data_size() const {
     return ph_->p_filesz;
@@ -1220,8 +1254,8 @@ void __cxa_atexit(...) {
 static void stash_kernel_data(bool reboot) {
     // stash initial value of data segment for soft-reboot support
     extern uint8_t _data_start[], _edata[], _kernel_end[];
-    uintptr_t data_size = (uintptr_t) _edata - (uintptr_t) _data_start;
-    uint8_t* data_stash = (uint8_t*) (SYMTAB_ADDR - data_size);
+    uintptr_t data_size = reinterpret_cast<uintptr_t>(_edata) - reinterpret_cast<uintptr_t>(_data_start);
+    uint8_t* data_stash = reinterpret_cast<uint8_t*>(SYMTAB_ADDR - data_size);
     if (reboot) {
         memcpy(_data_start, data_stash, data_size);
         memset(_edata, 0, _kernel_end - _edata);

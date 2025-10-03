@@ -18,16 +18,17 @@ extern "C" {
 //    We must provide our own implementations.
 
 void* memcpy(void* dst, const void* src, size_t n) {
-    const char* s = (const char*) src;
-    for (char* d = (char*) dst; n > 0; --n, ++s, ++d) {
+    const char* s = reinterpret_cast<const char*>(src);
+    char* d = reinterpret_cast<char*>(dst);
+    for (; n > 0; --n, ++s, ++d) {
         *d = *s;
     }
     return dst;
 }
 
 void* memmove(void* dst, const void* src, size_t n) {
-    const char* s = (const char*) src;
-    char* d = (char*) dst;
+    const char* s = reinterpret_cast<const char*>(src);
+    char* d = reinterpret_cast<char*>(dst);
     if (s < d && s + n > d) {
         s += n, d += n;
         while (n-- > 0) {
@@ -42,7 +43,8 @@ void* memmove(void* dst, const void* src, size_t n) {
 }
 
 void* memset(void* v, int c, size_t n) {
-    for (char* p = (char*) v; n > 0; ++p, --n) {
+    char* p = reinterpret_cast<char*>(v);
+    for (; n > 0; ++p, --n) {
         *p = c;
     }
     return v;
@@ -60,8 +62,8 @@ int memcmp(const void* a, const void* b, size_t n) {
 }
 
 void* memchr(const void* s, int c, size_t n) {
-    const unsigned char* ss;
-    for (ss = (const unsigned char*) s; n != 0; ++ss, --n) {
+    const unsigned char* ss = reinterpret_cast<const unsigned char*>(s);
+    for (; n != 0; ++ss, --n) {
         if (*ss == (unsigned char) c) {
             return (void*) ss;
         }
@@ -299,8 +301,55 @@ from_chars_result from_chars(const char* first, const char* last,
     }
 }
 
+to_chars_result to_chars(char* first, char* last,
+                         unsigned long value, int base) {
+    // determine length of `value` in characters
+    unsigned long v = value;
+    unsigned b2 = unsigned(base) * unsigned(base),
+        b3 = b2 * unsigned(base),
+        n = 0;
+    while (true) {
+        if (v < unsigned(base)) {
+            ++n;
+        } else if (v < b2) {
+            n += 2;
+        } else {
+            n += 3;
+        }
+        if (v < b3) {
+            break;
+        }
+        v /= b3;
+    }
+    if (last - first < n) {
+        return to_chars_result{last, E_OVERFLOW};
+    }
 
-// rand, srand
+    // unparse `value` right to left
+    char* s = first + n;
+    while (s > first) {
+        --s;
+        unsigned digit = value % base;
+        value /= base;
+        *s = digit < 10 ? '0' + digit : 'a' + digit - 10;
+    }
+    return to_chars_result{first + n, 0};
+}
+
+to_chars_result to_chars(char* first, char* last,
+                         long value, int base) {
+    if (first == last) {
+        return to_chars_result{last, E_OVERFLOW};
+    } else if (value < 0) {
+        *first = '-';
+        return to_chars(first + 1, last, -(unsigned long) value, base);
+    } else {
+        return to_chars(first, last, (unsigned long) value, base);
+    }
+}
+
+
+// pseudorandom number generators
 
 static std::atomic<int> rand_seed_set;
 static std::atomic<unsigned long> rand_seed;
@@ -321,23 +370,37 @@ void srand(unsigned seed) {
     rand_seed_set = 1;
 }
 
-// rand(min, max)
-//    Return a pseudorandom number evenly distributed between
-//    `min` and `max`, inclusive. Requires `min <= max` and
-//    `max - min <= RAND_MAX`.
-int rand(int min, int max) {
+namespace {
+template <typename T, typename F>
+T uniform_int_distribution(T min, T max, F&& engine) {
     assert(min <= max);
     assert(max - min <= RAND_MAX);
+    unsigned long amount = max - min + 1;
+    unsigned long per = (unsigned(RAND_MAX) + 1) / amount;
+    unsigned long bound = per * amount;
+    unsigned long r;
+    do {
+        r = engine();
+    } while (r >= bound);
+    return min + r / per;
+}
+}
 
-    unsigned div = (unsigned(RAND_MAX) + 1) / (max - min + 1),
-        top = div * (max - min + 1);
-    assert(top > 0 && top <= unsigned(RAND_MAX) + 1);
-    while (true) {
-        unsigned r = rand();
-        if (r < top) {
-            return min + r / div;
-        }
-    }
+int rand(int min, int max) {
+    return uniform_int_distribution(min, max, (int (*)()) rand);
+}
+
+unsigned rand_engine::operator()() {
+    seed_ = seed_ * 6364136223846793005UL + 1;
+    return (seed_ >> 33) & RAND_MAX;
+}
+
+unsigned rand_engine::operator()(unsigned min, unsigned max) {
+    return uniform_int_distribution(min, max, *this);
+}
+
+int rand_engine::operator()(int min, int max) {
+    return uniform_int_distribution(min, max, *this);
 }
 
 
@@ -498,7 +561,7 @@ void printer::vprintf(const char* format, va_list val) {
             base = 16;
             goto format_unsigned;
         case 'p':
-            num = (uintptr_t) va_arg(val, void*);
+            num = va_arg(val, uintptr_t);
             base = -16;
             flags |= FLAG_ALT | FLAG_ALT2 | FLAG_NUMERIC;
             break;
@@ -628,16 +691,18 @@ void console_clear() {
         console[i] = ' ' | 0x0700;
     }
     cursorpos = 0;
+#if WEENSYOS_KERNEL
+    console_show_cursor();
+#endif
 }
 
 
-// console_puts
-//    Put a string to the console, starting at the given cursor position.
+// console_printer
+//    A `printer` for writing strings to the CGA console.
+//    Understands limited ANSI terminal escape sequences.
 
-__noinline
-console_printer::console_printer(int cpos, bool scroll, int color)
-    : cell_(console), scroll_(scroll) {
-    color_ = color;
+console_printer::console_printer(int cpos, int scroll_mode)
+    : cell_(console), scroll_mode_(scroll_mode) {
     if (cpos < 0) {
         cell_ += cursorpos;
     } else if (cpos <= CONSOLE_ROWS * CONSOLE_COLUMNS) {
@@ -645,32 +710,117 @@ console_printer::console_printer(int cpos, bool scroll, int color)
     }
 }
 
-__noinline
-void console_printer::scroll() {
-    assert(cell_ >= console + END_CPOS);
-    if (scroll_) {
-        for (int i = 0; i != END_CPOS - CONSOLE_COLUMNS; ++i) {
-            console[i] = console[i + CONSOLE_COLUMNS];
-        }
-        for (int i = END_CPOS - CONSOLE_COLUMNS; i != END_CPOS; ++i) {
-            console[i] = 0;
-        }
-        cell_ -= CONSOLE_COLUMNS;
-    } else {
-        cell_ = console;
+static bool console_line_is_blank(int row) {
+    int cpos = row * CONSOLE_COLUMNS, ecpos = cpos + CONSOLE_COLUMNS;
+    while (cpos < ecpos && (console[cpos] & 0xF0DF) == 0x0000) {
+        ++cpos;
     }
+    return cpos == ecpos;
 }
 
-__noinline
+[[gnu::noinline]]
+void console_printer::scroll() {
+    assert(cell_ >= console + END_CPOS);
+    if (scroll_mode_ == scroll_off) {
+        cell_ = console;
+        return;
+    }
+    if (scroll_mode_ == scroll_blank && scroll_blank_ < 0) {
+        int row = CONSOLE_ROWS - 1;
+        while (row > 0 && !console_line_is_blank(row - 1)) {
+            --row;
+        }
+        while (row > 0 && console_line_is_blank(row - 1)) {
+            --row;
+        }
+        scroll_blank_ = row;
+    } else if (scroll_blank_ > 0 && !console_line_is_blank(scroll_blank_)) {
+        scroll_blank_ = 0;
+    }
+    int sp = scroll_blank_ > 0 ? scroll_blank_ * CONSOLE_COLUMNS : 0;
+    for (int i = sp; i != END_CPOS - CONSOLE_COLUMNS; ++i) {
+        console[i] = console[i + CONSOLE_COLUMNS];
+    }
+    for (int i = END_CPOS - CONSOLE_COLUMNS; i != END_CPOS; ++i) {
+        console[i] = 0;
+    }
+    cell_ -= CONSOLE_COLUMNS;
+}
+
 void console_printer::move_cursor() {
+    ebuf_.flush(*this);
     cursorpos = cell_ - console;
-#if WEENSYOS_KERNEL
-    extern void console_show_cursor(int);
-    console_show_cursor(cursorpos);
+#if CHICKADEE_KERNEL
+    console_show_cursor();
 #endif
 }
 
+[[gnu::noinline]]
+void ansi_escape_buffer::flush(printer& pr) {
+    int len = len_;
+    if (len <= 0) {
+        return;
+    }
+    len_ = -1;
+    for (int i = 0; i != len; ++i) {
+        pr.putc(buf_[i]);
+    }
+    len_ = 0;
+}
+
+[[gnu::noinline]]
+void ansi_escape_buffer::putc_impl(unsigned char c, printer& pr) {
+    const unsigned char colormap[] = {0, 4, 2, 6, 1, 5, 3, 7};
+
+    // collect prefix of an `ESC [ ... m` sequence in ebuf_
+    buf_[len_] = c;
+    ++len_;
+    if (len_ == 1
+        || (len_ == 2 && c == '[')
+        || (len_ > 2 && len_ < (int) sizeof(buf_) && (isdigit(c) || c == ';'))) {
+        return;
+    }
+
+    // not `ESC [ ... m`: output as normal
+    if (c != 'm') {
+        flush(pr);
+        return;
+    }
+
+    // full `ESC [ ... m`: parse into color_ setting
+    int x = 0;
+    pr.color_ = COLOR_GRAY;
+    for (int i = 2; i != len_; ++i) {
+        if (isdigit(buf_[i])) {
+            x = x * 10 + buf_[i] - '0';
+        } else {
+            if (x == 0) {
+                pr.color_ = COLOR_GRAY;
+            } else if (x == 1) {
+                pr.color_ |= 0x0800;
+            } else if (x == 2) {
+                pr.color_ &= ~0x0800;
+            } else if (x == 7) {
+                pr.color_ = ((pr.color_ >> 4) | (pr.color_ << 4)) & 0xFF00;
+            } else if (x >= 30 && x <= 37) {
+                pr.color_ = (pr.color_ & 0xF000) | (colormap[x - 30] << 8);
+            } else if (x >= 40 && x <= 47) {
+                pr.color_ = (pr.color_ & 0x0F00) | (colormap[x - 40] << 12);
+            } else if (x >= 90 && x <= 97) {
+                pr.color_ = (pr.color_ & 0xF000) | (colormap[x - 90] << 8) | 0x0800;
+            } else if (x >= 100 && x <= 107) {
+                pr.color_ = (pr.color_ & 0x0F00) | (colormap[x - 100] << 12) | 0x8000;
+            }
+            x = 0;
+        }
+    }
+    len_ = 0;
+}
+
 void console_printer::putc(unsigned char c) {
+    if (ebuf_.putc(c, *this)) {
+        return;
+    }
     while (cell_ >= console + END_CPOS) {
         scroll();
     }
@@ -685,9 +835,10 @@ void console_printer::putc(unsigned char c) {
     }
 }
 
-__noinline
+[[gnu::noinline]]
 int console_puts(int cpos, int color, const char* s, size_t len) {
-    console_printer cp(cpos, cpos < 0, color);
+    console_printer cp(cpos, cpos < 0);
+    cp.color_ = color;
     while (len > 0) {
         cp.putc(*s);
         ++s;
@@ -703,9 +854,9 @@ int console_puts(int cpos, int color, const char* s, size_t len) {
 // console_vprintf, console_printf
 //    Print a message onto the console, starting at the given cursor position.
 
-__noinline
-int console_vprintf(int cpos, int color, const char* format, va_list val) {
-    console_printer cp(cpos, cpos < 0, color);
+[[gnu::noinline]]
+int console_vprintf(int cpos, const char* format, va_list val) {
+    console_printer cp(cpos, cpos < 0);
     cp.vprintf(format, val);
     if (cpos < 0) {
         cp.move_cursor();
@@ -713,55 +864,31 @@ int console_vprintf(int cpos, int color, const char* format, va_list val) {
     return cp.cell_ - console;
 }
 
-__noinline
-int console_printf(int cpos, int color, const char* format, ...) {
+[[gnu::noinline]]
+int console_printf(int cpos, const char* format, ...) {
     va_list val;
     va_start(val, format);
-    cpos = console_vprintf(cpos, color, format, val);
+    cpos = console_vprintf(cpos, format, val);
     va_end(val);
     return cpos;
 }
 
-__noinline
-void console_printf(int color, const char* format, ...) {
-    va_list val;
-    va_start(val, format);
-    console_vprintf(-1, color, format, val);
-    va_end(val);
-}
-
-__noinline
+[[gnu::noinline]]
 void console_printf(const char* format, ...) {
     va_list val;
     va_start(val, format);
-    console_vprintf(-1, 0x700, format, val);
+    console_vprintf(-1, format, val);
     va_end(val);
 }
 
 
 // k-hardware.cc/u-lib.cc supply error_vprintf
 
-__noinline
-void error_printf(int cpos, int color, const char* format, ...) {
-    va_list val;
-    va_start(val, format);
-    error_vprintf(cpos, color, format, val);
-    va_end(val);
-}
-
-__noinline
-void error_printf(int color, const char* format, ...) {
-    va_list val;
-    va_start(val, format);
-    error_vprintf(-1, color, format, val);
-    va_end(val);
-}
-
-__noinline
+[[gnu::noinline]]
 void error_printf(const char* format, ...) {
     va_list val;
     va_start(val, format);
-    error_vprintf(-1, COLOR_ERROR, format, val);
+    error_vprintf(format, val);
     va_end(val);
 }
 
@@ -778,8 +905,7 @@ void assert_memeq_fail(const char* file, int line, const char* msg,
     size_t epos = pos + 10 < sz ? pos + 10 : sz;
     const char* ellipsis1 = spos > 0 ? "..." : "";
     const char* ellipsis2 = epos < sz ? "..." : "";
-    error_printf(CPOS(22, 0), COLOR_ERROR,
-                 "%s:%d: \"%s%.*s%s\" != \"%s%.*s%s\" @%zu\n",
+    error_printf("%s:%d: \"%s%.*s%s\" != \"%s%.*s%s\" @%zu\n",
                  file, line,
                  ellipsis1, int(epos - spos), x + spos, ellipsis2,
                  ellipsis1, int(epos - spos), y + spos, ellipsis2, pos);

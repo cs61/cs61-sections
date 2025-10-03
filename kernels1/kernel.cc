@@ -24,7 +24,7 @@
 
 #define PROC_SIZE 0x40000       // initial state only
 
-proc ptable[PID_MAX];           // array of process descriptors
+proc ptable[MAXNPROC];          // array of process descriptors
                                 // Note that `ptable[0]` is never used.
 proc* current;                  // pointer to currently executing proc
 
@@ -79,7 +79,7 @@ void kernel_start(const char* command) {
     }
 
     // set up process descriptors
-    for (pid_t i = 0; i < PID_MAX; i++) {
+    for (pid_t i = 0; i < MAXNPROC; i++) {
         ptable[i].pid = i;
         ptable[i].state = P_FREE;
     }
@@ -187,8 +187,8 @@ void process_setup(pid_t pid, const char* program_name) {
 
     // copy instructions and data from program image into process memory
     for (auto seg = pgm.begin(); seg != pgm.end(); ++seg) {
-        memset((void*) seg.va(), 0, seg.size());
-        memcpy((void*) seg.va(), seg.data(), seg.data_size());
+        memset(reinterpret_cast<void*>(seg.va()), 0, seg.size());
+        memcpy(reinterpret_cast<void*>(seg.va()), seg.data(), seg.data_size());
     }
 
     // mark entry point
@@ -230,7 +230,7 @@ void exception(regstate* regs) {
 
     // Show the current cursor location and memory state
     // (unless this is a kernel fault).
-    console_show_cursor(cursorpos);
+    console_show_cursor();
     if (regs->reg_intno != INT_PF || (regs->reg_errcode & PTE_U)) {
         memshow();
     }
@@ -260,8 +260,7 @@ void exception(regstate* regs) {
             proc_panic(current, "Kernel page fault on %p (%s %s, rip=%p)!\n",
                        addr, operation, problem, regs->reg_rip);
         }
-        error_printf(CPOS(24, 0), COLOR_ERROR,
-            "Process %d page fault on %p (%s %s, rip=%p)!\n",
+        error_printf("Process %d page fault on %p (%s %s, rip=%p)!\n",
             current->pid, addr, operation, problem, regs->reg_rip);
         current->state = P_FAULTED;
         break;
@@ -314,7 +313,7 @@ uintptr_t syscall(regstate* regs) {
     // log_printf("p%d: %s\n", current->pid, syscall_name(regs->reg_rax));
 
     // Show the current cursor location and memory state.
-    console_show_cursor(cursorpos);
+    console_show_cursor();
     memshow();
 
     // If Control-C was typed, exit the virtual machine.
@@ -341,20 +340,20 @@ uintptr_t syscall(regstate* regs) {
 
     case SYSCALL_GETSYSNAME: {
         const char* osname = "DemoOS 61.61";
-        char* buf = (char*) current->regs.reg_rdi;
+        char* buf = reinterpret_cast<char*>(current->regs.reg_rdi);
         strcpy(buf, osname);
         return 0;
     }
 
     case SYSCALL_SPAWN:
-        return syscall_spawn((const char*) current->regs.reg_rdi);
+        return syscall_spawn(reinterpret_cast<const char*>(current->regs.reg_rdi));
 
     case SYSCALL_PIPEWRITE:
-        return syscall_pipewrite((const char*) current->regs.reg_rdi,
+        return syscall_pipewrite(reinterpret_cast<const char*>(current->regs.reg_rdi),
                                  current->regs.reg_rsi);
 
     case SYSCALL_PIPEREAD:
-        return syscall_piperead((char*) current->regs.reg_rdi,
+        return syscall_piperead(reinterpret_cast<char*>(current->regs.reg_rdi),
                                 current->regs.reg_rsi);
 
     default:
@@ -375,7 +374,7 @@ uintptr_t syscall(regstate* regs) {
 int syscall_page_alloc(uintptr_t addr) {
     assert(physpages[addr / PAGESIZE].refcount == 0);
     ++physpages[addr / PAGESIZE].refcount;
-    memset((void*) addr, 0, PAGESIZE);
+    memset(reinterpret_cast<void*>(addr), 0, PAGESIZE);
     return 0;
 }
 
@@ -433,7 +432,7 @@ ssize_t syscall_piperead(char* buf, size_t sz) {
 void schedule() {
     pid_t pid = current->pid;
     for (unsigned spins = 1; true; ++spins) {
-        pid = (pid + 1) % PID_MAX;
+        pid = (pid + 1) % MAXNPROC;
         if (ptable[pid].state == P_RUNNABLE) {
             run(&ptable[pid]);
         }
@@ -487,22 +486,22 @@ void memshow() {
     // switch to a new process every 0.25 sec
     if (last_ticks == 0 || ticks - last_ticks >= HZ / 2) {
         last_ticks = ticks;
-        showing = (showing + 1) % NPROC;
+        showing = (showing + 1) % MAXNPROC;
     }
 
     proc* p = nullptr;
-    for (int search = 0; !p && search < NPROC; ++search) {
+    for (int search = 0; !p && search < MAXNPROC; ++search) {
         if (ptable[showing].state != P_FREE
             && ptable[showing].pagetable) {
             p = &ptable[showing];
         } else {
-            showing = (showing + 1) % NPROC;
+            showing = (showing + 1) % MAXNPROC;
         }
     }
 
     console_memviewer(p);
     if (!p) {
-        console_printf(CPOS(10, 26), 0x0F00, "   VIRTUAL ADDRESS SPACE\n"
+        console_printf(CPOS(10, 26), CS_WHITE "   VIRTUAL ADDRESS SPACE\n"
             "                          [All processes have exited]\n"
             "\n\n\n\n\n\n\n\n\n\n\n");
     }

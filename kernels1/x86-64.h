@@ -280,6 +280,9 @@ __always_inline void outl(int port, uint32_t data) {
 __always_inline void invlpg(void* addr) {
     asm volatile("invlpg (%0)" : : "r" (addr) : "memory");
 }
+__always_inline void invlpg(uintptr_t addr) {
+    asm volatile("invlpg (%0)" : : "r" (addr) : "memory");
+}
 
 __always_inline void lidt(void* p) {
     asm volatile("lidt (%0)" : : "r" (p));

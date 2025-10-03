@@ -34,8 +34,10 @@ LOG ?= file:log.txt
 QEMUOPT = -net none -parallel $(LOG) -smp $(NCPU)
 ifeq ($(D),1)
 QEMUOPT += -d int,cpu_reset,guest_errors -no-reboot -D qemu.log
+$(info * Writing detailed QEMU log to `qemu.log`)
 else ifeq ($(D),2)
 QEMUOPT += -d guest_errors -no-reboot -D qemu.log
+$(info * Writing detailed QEMU log to `qemu.log`)
 endif
 ifneq ($(NOGDB),1)
 QEMUGDB ?= -gdb tcp::12949
@@ -97,20 +99,20 @@ endif
 # How to make object files
 
 $(OBJDIR)/%.ko: %.cc $(KERNELBUILDSTAMPS)
-	$(call cxxcompile,-O1 $(KERNELCXXFLAGS) -DWEENSYOS_KERNEL -c $< -o $@,COMPILE $<)
+	$(call cxxcompile,-O1 $(KERNELCXXFLAGS) $(DEBUGFLAGS) -DWEENSYOS_KERNEL -c $< -o $@,COMPILE $<)
 
 $(OBJDIR)/%.ko: %.S $(OBJDIR)/k-asm.h $(KERNELBUILDSTAMPS)
 	$(call assemble,-O2 -c $< -o $@,ASSEMBLE $<)
 
 $(OBJDIR)/boot.o: $(OBJDIR)/%.o: boot.cc $(KERNELBUILDSTAMPS)
-	$(call cxxcompile,-Os $(CXXFLAGS) -fomit-frame-pointer -c $< -o $@,COMPILE $<)
+	$(call cxxcompile,-Os $(CXXFLAGS) -c $< -o $@,COMPILE $<)
 
 $(OBJDIR)/bootentry.o: $(OBJDIR)/%.o: \
 	bootentry.S $(OBJDIR)/k-asm.h $(KERNELBUILDSTAMPS)
-	$(call assemble,-Os -fomit-frame-pointer -c $< -o $@,ASSEMBLE $<)
+	$(call assemble,-Os -c $< -o $@,ASSEMBLE $<)
 
 $(OBJDIR)/%.uo: %.cc $(BUILDSTAMPS)
-	$(call cxxcompile,-O1 $(CXXFLAGS) -DWEENSYOS_PROCESS -c $< -o $@,COMPILE $<)
+	$(call cxxcompile,-O1 $(CXXFLAGS) $(DEBUGFLAGS) -DWEENSYOS_PROCESS -c $< -o $@,COMPILE $<)
 
 $(OBJDIR)/%.uo: %.S $(OBJDIR)/u-asm.h $(BUILDSTAMPS)
 	$(call assemble,-O2 -c $< -o $@,ASSEMBLE $<)
@@ -148,7 +150,7 @@ $(OBJDIR)/kernel.full: $(KERNEL_OBJS) $(PROCESS_BINARIES) $(KERNEL_LINKER_FILES)
 $(OBJDIR)/p-%.full: $(OBJDIR)/p-%.uo $(PROCESS_LIB_OBJS) $(PROCESS_LINKER_FILES)
 	$(call link,-T $(PROCESS_LINKER_FILES) -o $@ $< $(PROCESS_LIB_OBJS),LINK)
 
-$(OBJDIR)/p-eve.full $(OBJDIR)/p-pipereader.full $(OBJDIR)/p-spawn.full: \
+$(OBJDIR)/p-eve.full $(OBJDIR)/p-pipereader.full: \
 $(OBJDIR)/p-%.full: $(OBJDIR)/p-%.uo $(PROCESS_LIB_OBJS) build/process2.ld
 	$(call link,-T build/process2.ld -o $@ $< $(PROCESS_LIB_OBJS),LINK)
 

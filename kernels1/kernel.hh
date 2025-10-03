@@ -8,7 +8,7 @@
 struct elf_header;
 struct elf_program;
 struct program_image_segment;
-struct vmiter;
+class vmiter;
 
 
 // kernel.hh
@@ -32,8 +32,7 @@ struct proc {
 };
 
 // Process table
-#define NPROC 16                // maximum number of processes
-extern proc ptable[NPROC];
+extern proc ptable[MAXNPROC];
 
 
 // Kernel start address
@@ -57,18 +56,23 @@ extern proc ptable[NPROC];
 //
 //    `physpages[I]` is a `physpageinfo` structure corresponding to the `I`th
 //    physical page (which contains physical addresses
-//    `[I*PAGESIZE,(I+1)*PAGESIZE)`). In the handout code,
-//    `physpages[I].refcount` represents the number of times physical page `I`
-//    is used. Free pages have `refcount == 0`, and (since handout processes
-//    never share memory) allocated pages have `refcount == 1`.
+//    `[I*PAGESIZE,(I+1)*PAGESIZE)`).
 //
-//    You can add more information to `physpageinfo` if you need to, but the
-//    memory viewer relies on `refcount == 0` indicating free pages.
+//    In the handout code, `physpages[I].refcount` represents the number of
+//    times physical page `I` is used. Free pages have `refcount == 0`, and
+//    (since handout processes never share memory) allocated pages have
+//    `refcount == 1`.
+//
+//    You can add more information to `physpageinfo` if you need to.
+//    The memory viewer calls `used()` and `valid()` to check for bugs.
 struct physpageinfo {
     uint8_t refcount = 0;
 
     bool used() const {
         return this->refcount != 0;
+    }
+    bool valid() const {
+        return this->refcount <= MAXNPROC;
     }
 };
 extern physpageinfo physpages[NPAGES];
@@ -148,10 +152,10 @@ void syscall_entry();
 [[noreturn]] void exception_return(proc* p);
 
 
-// console_show_cursor(cpos)
-//    Move the console cursor to position `cpos`, which should be between 0
+// console_show_cursor()
+//    Show the console cursor at `cursorpos`, which should be between 0
 //    and 80 * 25.
-void console_show_cursor(int cpos);
+void console_show_cursor();
 
 // console_memviewer(vmp)
 //    Show the memory viewer on the console, including the virtual address
@@ -249,7 +253,7 @@ struct program_image_segment {
 
     program_image_segment(elf_program* ph, elf_header* elf);
     inline void fix();
-    friend class program_image;
+    friend struct program_image;
 };
 
 
@@ -269,6 +273,11 @@ struct program_image_segment {
 //    Report a panic caused by a PROC_PANIC system call.
 [[noreturn]] void user_panic(const proc* p);
 
+// error_print_backtrace(regs, pagetable)
+//    Print a backtrace starting from `regs` in `pagetable`.
+void error_print_backtrace(const regstate& regs, x86_64_pagetable* pagetable,
+                           bool exclude_rip = false);
+
 
 // strlcpy_from_user
 //    Copy a C string from a `vmiter` into `buf`, only considering
@@ -282,11 +291,11 @@ void strlcpy_from_user(char* buf, vmiter it, size_t maxlen);
 __noinline void log_printf(const char* format, ...);
 __noinline void log_vprintf(const char* format, va_list val);
 
-// log_backtrace
+// log_print_backtrace
 //    Print a backtrace to the host's `log.txt` file, either for the current
 //    stack or for the stack active in `p`.
-void log_backtrace(const char* prefix = "");
-void log_backtrace(const proc* p, const char* prefix = "");
+void log_print_backtrace();
+void log_print_backtrace(const proc* p);
 
 // lookup_symbol
 //    Read the hidden symbol table for the name of the kernel symbol at
@@ -294,6 +303,12 @@ void log_backtrace(const proc* p, const char* prefix = "");
 //    Returns true if found.
 __no_asan
 bool lookup_symbol(uintptr_t addr, const char** name, uintptr_t* start);
+
+
+// error_vprintf, error_printf
+//    Print debugging messages to the console and to the host's
+//    `log.txt` file via `log_printf`.
+void error_printf(const char* format, ...);
 
 
 // address translation functions for identity-mapped kernels

@@ -89,8 +89,14 @@ void panic(const char* format, ...) {
     sys_panic(buf);
 }
 
-void error_vprintf(int cpos, int color, const char* format, va_list val) {
-    console_vprintf(cpos, color, format, val);
+void error_vprintf(const char* format, va_list val) {
+    int scroll_mode = console_printer::scroll_blank;
+    console_printer pr(-1, scroll_mode);
+    if (pr.cell_ < console + END_CPOS - CONSOLE_COLUMNS) {
+        pr.cell_ = console + END_CPOS;
+    }
+    pr.vprintf(format, val);
+    pr.move_cursor();
 }
 
 void assert_fail(const char* file, int line, const char* msg,
